@@ -10,10 +10,15 @@
 //  T(r)   = T0   * (r0 / r)
 //  P(r)   = rho * k_B * T / (mu * m_H)   ~ 1/r^2
 //
+//  Inner boundary: user-defined Dirichlet BC following Burkert+12 Sec. 6:
+//    ghost cells reset to hydrostatic equilibrium profile;
+//    outflow (inward v_r < 0) allowed, inflow (v_r > 0) suppressed.
+//
 //  Use with spherical-polar coordinates.
 //========================================================================================
 
 // C++ headers
+#include <algorithm>   // std::min
 #include <cmath>
 #include <iostream>
 
@@ -26,6 +31,7 @@
 #include "../field/field.hpp"
 #include "../hydro/hydro.hpp"
 #include "../mesh/mesh.hpp"
+#include "../bvals/bvals.hpp"   // BoundaryFace
 
 // ---------------------------------------------------------------------------
 // Physical constants (CGS)
@@ -40,13 +46,20 @@ namespace {
   Real M_grav_g;
 }
 
-// Forward declaration (8-parameter SrcTermFunc signature)
+// ---------------------------------------------------------------------------
+// Forward declarations
+// ---------------------------------------------------------------------------
 void BHGravity(MeshBlock *pmb, const Real time, const Real dt,
                const AthenaArray<Real> &prim,
                const AthenaArray<Real> &prim_scalar,
                const AthenaArray<Real> &bcc,
                AthenaArray<Real> &cons,
                AthenaArray<Real> &cons_scalar);
+
+void BurkertInnerBC(MeshBlock *pmb, Coordinates *pco,
+                    AthenaArray<Real> &prim, FaceField &b,
+                    Real time, Real dt,
+                    int il, int iu, int jl, int ju, int kl, int ku, int ngh);
 
 //========================================================================================
 void Mesh::InitUserMeshData(ParameterInput *pin) {
@@ -70,11 +83,11 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
             << "[g2_ambient] M_grav = " << M_grav_g/M_sun << " M_sun\n";
 
   EnrollUserExplicitSourceFunction(BHGravity);
+  EnrollUserBoundaryFunction(BoundaryFace::inner_x1, BurkertInnerBC);
 }
 
 //========================================================================================
 void MeshBlock::ProblemGenerator(ParameterInput *pin) {
-  // Get adiabatic index from EOS
   Real gamma = peos->GetGamma();
   Real gm1   = gamma - 1.0;
 
@@ -82,34 +95,66 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     for (int j = js; j <= je; ++j) {
       for (int i = is; i <= ie; ++i) {
 
-        Real r   = pcoord->x1v(i);            // radius of cell centre [cm]
-        Real rho = rho0_g * (r0_g / r);       // density [g/cm^3]
-        Real T   = T0_g   * (r0_g / r);       // temperature [K]
-        Real P   = rho * k_B * T / (mu_g * m_H); // pressure [dyn/cm^2]
+        Real r   = pcoord->x1v(i);
+        Real rho = rho0_g * (r0_g / r);
+        Real T   = T0_g   * (r0_g / r);
+        Real P   = rho * k_B * T / (mu_g * m_H);
 
-        // ---  Primitive variables  ---
         phydro->w(IDN, k, j, i) = rho;
-        phydro->w(IVX, k, j, i) = 0.0;   // v_r   = 0
-        phydro->w(IVY, k, j, i) = 0.0;   // v_theta = 0
-        phydro->w(IVZ, k, j, i) = 0.0;   // v_phi  = 0
+        phydro->w(IVX, k, j, i) = 0.0;
+        phydro->w(IVY, k, j, i) = 0.0;
+        phydro->w(IVZ, k, j, i) = 0.0;
         phydro->w(IPR, k, j, i) = P;
 
-        // ---  Conserved variables  (set directly, standard Athena++ pgen pattern) ---
-        // For v=0: total energy = internal energy only
         phydro->u(IDN, k, j, i) = rho;
         phydro->u(IM1, k, j, i) = 0.0;
         phydro->u(IM2, k, j, i) = 0.0;
         phydro->u(IM3, k, j, i) = 0.0;
-        phydro->u(IEN, k, j, i) = P / gm1;  // e_int = P / (gamma - 1)
+        phydro->u(IEN, k, j, i) = P / gm1;
       }
     }
   }
 
-  // Quick sanity check: print first and last cell
   std::cout << "[g2_ambient] Cell i=is:  r=" << pcoord->x1v(is)
             << "  rho=" << phydro->w(IDN,ks,js,is) << "\n";
   std::cout << "[g2_ambient] Cell i=ie:  r=" << pcoord->x1v(ie)
             << "  rho=" << phydro->w(IDN,ks,js,ie) << "\n";
+}
+
+//========================================================================================
+// Inner boundary: Dirichlet (Burkert+12 Sec. 6)
+//
+//   Ghost cells: i = il-1, il-2, ..., il-ngh  (il = pmb->is)
+//   - rho, P: Burkert equilibrium at ghost-cell radius
+//   - v_r:    min(v_r of first active cell, 0)
+//             => inward flow (outflow from domain) is allowed,
+//                outward flow (inflow into domain) is suppressed
+//   - v_theta, v_phi: 0
+//========================================================================================
+void BurkertInnerBC(MeshBlock *pmb, Coordinates *pco,
+                    AthenaArray<Real> &prim, FaceField &b,
+                    Real time, Real dt,
+                    int il, int iu, int jl, int ju, int kl, int ku, int ngh) {
+  for (int k = kl; k <= ku; ++k) {
+    for (int j = jl; j <= ju; ++j) {
+      // velocity at the first active cell (reference for outflow condition)
+      Real vr_active = prim(IVX, k, j, il);
+
+      for (int i = 1; i <= ngh; ++i) {
+        int  ig  = il - i;             // ghost-cell index
+        Real r   = pco->x1v(ig);      // radius of ghost cell [cm]
+        Real rho = rho0_g * (r0_g / r);
+        Real T   = T0_g   * (r0_g / r);
+        Real P   = rho * k_B * T / (mu_g * m_H);
+
+        prim(IDN, k, j, ig) = rho;
+        prim(IPR, k, j, ig) = P;
+        prim(IVX, k, j, ig) = std::min(vr_active, 0.0);  // outflow only
+        prim(IVY, k, j, ig) = 0.0;
+        prim(IVZ, k, j, ig) = 0.0;
+      }
+    }
+  }
 }
 
 //========================================================================================

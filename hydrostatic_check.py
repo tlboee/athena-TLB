@@ -64,3 +64,9 @@ plt.show()
 
 # Zahlenwert ausgeben
 print(f"Max. Abweichung vom Gleichgewicht: {np.max(np.abs(residuum))*100:.2f} %")
+
+# Analytischer Check: welche BH-Masse wäre nötig für exaktes Gleichgewicht?
+M_required = 2 * k_B * T0 * r0 / (mu * m_H * G)
+print(f"Verwendete BH-Masse:       {M_BH/M_sun:.2e} Sonnenmassen")
+print(f"Nötig für Gleichgewicht:   {M_required/M_sun:.2e} Sonnenmassen")
+print(f"Verhältnis:                {M_required/M_BH:.2f}")

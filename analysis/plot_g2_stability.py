@@ -11,7 +11,10 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-sys.path.insert(0, 'vis/python')
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+RUN = ROOT / 'runs' / 'g2_1d'
+sys.path.insert(0, str(ROOT / 'vis' / 'python'))
 import athena_read
 
 # -----------------------------------------------------------------------
@@ -43,7 +46,7 @@ files = [
 datasets = []
 times    = []
 for f in files:
-    d = athena_read.tab(f)
+    d = athena_read.tab(RUN / f)
     datasets.append(d)
     times.append(d['time'] / yr)
     print(f"  {f}  →  t = {d['time']/yr:.1f} yr")
@@ -118,6 +121,6 @@ ax2.grid(True, alpha=0.3)
 ax2.set_xscale('log')
 
 plt.tight_layout()
-plt.savefig('figures/g2_stability_1d.png', dpi=150, bbox_inches='tight')
+plt.savefig(ROOT / 'figures' / 'g2_stability_1d.png', dpi=150, bbox_inches='tight')
 print("\nPlot gespeichert: figures/g2_stability_1d.png")
 plt.show()

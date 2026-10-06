@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 
 # ============================================================
 # Physikalische Konstanten (CGS-Einheitensystem)
@@ -53,7 +56,7 @@ for ax in axes:
     ax.grid(True, which='both', alpha=0.3)
 
 plt.tight_layout()
-plt.savefig('burkert_profile.png', dpi=150)
+plt.savefig(ROOT / 'figures' / 'burkert_profile.png', dpi=150)
 plt.show()
 print("Steigungen (erwartet: -1, -1, -2):")
 print(f"  rho: {np.polyfit(np.log10(r_in_r0), np.log10(rho), 1)[0]:.2f}")

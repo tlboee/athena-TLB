@@ -9,8 +9,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import os, glob
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+RUN = ROOT / 'runs' / 'g2_2d'
+FIG = ROOT / 'figures'
 
-os.makedirs('figures', exist_ok=True)
+os.makedirs(FIG, exist_ok=True)
 
 # ---- constants (CGS) ----
 k_B  = 1.380649e-16;  m_H = 1.6726e-24
@@ -35,7 +39,7 @@ def get_time(fname):
     with open(fname) as f: h = f.readline()
     return float(h.split('time=')[1].split()[0]) / yr
 
-files = sorted(glob.glob('g2_2d.block0.out1.*.tab'))
+files = sorted(glob.glob(str(RUN / 'g2_2d.block0.out1.*.tab')))
 times = [get_time(f) for f in files]
 
 # ---- Burkert analytical ----
@@ -75,7 +79,7 @@ plt.colorbar(im1, ax=axes[1])
 
 plt.suptitle('2D adiabatic ambient medium (Burkert+12 profile)', fontsize=13)
 plt.tight_layout()
-plt.savefig('figures/g2_2d_density_t10.png', dpi=150)
+plt.savefig(FIG / 'g2_2d_density_t10.png', dpi=150)
 plt.close()
 print("Saved figures/g2_2d_density_t10.png")
 
@@ -108,6 +112,6 @@ axes[1].legend(fontsize=8, ncol=2)
 
 plt.suptitle('2D adiabatic ambient medium – time evolution', fontsize=13)
 plt.tight_layout()
-plt.savefig('figures/g2_2d_radprof.png', dpi=150)
+plt.savefig(FIG / 'g2_2d_radprof.png', dpi=150)
 plt.close()
 print("Saved figures/g2_2d_radprof.png")

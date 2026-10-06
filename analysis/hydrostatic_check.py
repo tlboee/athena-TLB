@@ -1,5 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 
 # ============================================================
 # Konstanten (CGS)
@@ -59,7 +62,7 @@ for ax in axes:
     ax.grid(True, which='both', alpha=0.3)
 
 plt.tight_layout()
-plt.savefig('hydrostatic_check.png', dpi=150)
+plt.savefig(ROOT / 'figures' / 'hydrostatic_check.png', dpi=150)
 plt.show()
 
 # Zahlenwert ausgeben

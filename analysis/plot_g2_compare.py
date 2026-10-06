@@ -5,6 +5,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import os
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
 
 r0   = 1.0e16
 k_B  = 1.380649e-16
@@ -42,8 +44,7 @@ def read_tab(fname):
                 vr=avg(vr_r),   vt=avg(vt_r))
 
 def snap_file(run_id, snap):
-    return os.path.expanduser(
-        f"~/athena/{run_id}.block0.out1.{snap:05d}.tab")
+    return str(ROOT / "runs" / run_id / f"{run_id}.block0.out1.{snap:05d}.tab")
 
 # Analytisch
 def burkert_rho(r): return 9.5e-22 * (r0/r)
@@ -90,7 +91,7 @@ for ax in axes.flat:
     ax.legend(fontsize=8)
 
 fig.tight_layout()
-outdir = os.path.expanduser("~/athena/figures")
+outdir = str(ROOT / "figures")
 os.makedirs(outdir, exist_ok=True)
 out = os.path.join(outdir, "g2_compare_t10.png")
 fig.savefig(out, dpi=150)

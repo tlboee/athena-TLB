@@ -1,14 +1,17 @@
 import sys
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
 # athena_read.py aus dem Athena++-Paket laden
-sys.path.insert(0, 'vis/python')
+ROOT = Path(__file__).resolve().parent.parent
+RUN = ROOT / "runs" / "sod"
+sys.path.insert(0, str(ROOT / "vis" / "python"))
 import athena_read
 
 # Zwei Zeitschritte laden: t=0 (Anfang) und t=Ende
-data_init = athena_read.tab('Sod.block0.out1.00000.tab')
-data_final = athena_read.tab('Sod.block0.out1.00020.tab')
+data_init = athena_read.tab(RUN / 'Sod.block0.out1.00000.tab')
+data_final = athena_read.tab(RUN / 'Sod.block0.out1.00020.tab')
 
 x_init  = data_init['x1v']
 x_final = data_final['x1v']
@@ -31,6 +34,6 @@ axes[2].set_ylabel('Geschwindigkeit v₁')
 axes[2].set_xlabel('Position x')
 
 plt.tight_layout()
-plt.savefig('sod_plot.png', dpi=150)
+plt.savefig(ROOT / 'figures' / 'sod_plot.png', dpi=150)
 plt.show()
-print("Plot gespeichert als sod_plot.png")
+print("Plot gespeichert als figures/sod_plot.png")

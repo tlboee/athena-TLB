@@ -1,0 +1,59 @@
+<comment>
+problem   = G2 ambient medium + G2 cloud tracer (M3)
+config    = --prob=g2_ambient --coord=spherical_polar --nscalars=1
+method    = Burkert+12 relaxation (use_nsc=0, tau_relax=1yr) + passive tracer
+
+<job>
+problem_id = g2_2d_tracer
+
+<output1>
+file_type  = tab
+variable   = prim
+dt         = 3.156e7
+
+<mesh>
+nx1        = 256
+x1min      = 3.0e15
+x1max      = 3.0e17
+ix1_bc     = user
+ox1_bc     = outflow
+nx2        = 128
+x2min      = 1.0471975511965976
+x2max      = 2.0943951023931953
+ix2_bc     = outflow
+ox2_bc     = outflow
+nx3        = 1
+x3min      = 0.0
+x3max      = 6.2831853071795862
+ix3_bc     = periodic
+ox3_bc     = periodic
+
+<meshblock>
+nx1        = 256
+nx2        = 128
+nx3        = 1
+
+<hydro>
+gamma      = 1.6666666667
+dfloor     = 1.0e-30
+
+<time>
+cfl_number = 0.3
+tlim       = 3.156e8
+
+<problem>
+# Ambient medium (Burkert+12)
+rho0       = 9.5e-22
+T0         = 2.0e8
+r0         = 1.0e16
+mu         = 0.5
+M_BH       = 4.31e6
+use_nsc    = 0
+tau_relax  = 3.156e7
+tr_thresh  = 0.5
+
+# G2 cloud (Burkert+12 CC01 initial position)
+x_G2       = -7.22e16
+z_G2       =  2.21e16
+R_cloud    = 1.87e15
+T_G2       = 1.0e4

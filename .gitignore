@@ -70,3 +70,4 @@ doc/doxy*
 # Eigene Simulationsläufe und Python-Cache
 runs/
 __pycache__/
+logs/

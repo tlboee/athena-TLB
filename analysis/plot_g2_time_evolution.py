@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import glob, os
+from pathlib import Path
 
 matplotlib.rcParams.update({
     'font.family': 'serif',
@@ -16,7 +17,8 @@ matplotlib.rcParams.update({
     'figure.dpi': 150,
 })
 
-RUNS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'runs')
+ROOT     = Path(__file__).resolve().parent.parent
+RUNS_DIR = str(ROOT / 'runs')
 YR_S     = 3.156e7   # seconds per year
 KM_S     = 1e5       # cm/s → km/s
 
@@ -82,8 +84,7 @@ ax.annotate('stabil (Burkert+12)',
 ax.grid(True, alpha=0.25, linestyle=':')
 fig.tight_layout()
 
-outpath = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       'figures', 'g2_time_evolution_vr.png')
+outpath = str(ROOT / 'figures' / 'g2_time_evolution_vr.png')
 os.makedirs(os.path.dirname(outpath), exist_ok=True)
 fig.savefig(outpath, dpi=150, bbox_inches='tight')
 print(f'Gespeichert: {outpath}')

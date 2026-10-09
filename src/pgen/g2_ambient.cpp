@@ -3,11 +3,12 @@
 //! \file g2_ambient.cpp
 //  Burkert+12 hot ambient medium — M3 version with passive tracer + G2 cloud
 //
-//  Tracer convention:  tr = 1  pristine atmosphere
-//                      tr = 0  G2 cloud material
+//  Tracer convention (Burkert+12):  tr = 0  pristine atmosphere
+//                                   tr = 1  G2 cloud material
 //
-//  Relaxation is conditioned on the tracer: only pristine cells (tr > tr_thresh)
+//  Relaxation is conditioned on the tracer: only pristine cells (tr < tr_thresh)
 //  are driven back toward the Burkert equilibrium profile.
+//  Default tr_thresh = 1e-4 (Burkert+12): relax only truly uncontaminated background.
 //========================================================================================
 #include <algorithm>
 #include <cmath>
@@ -37,7 +38,9 @@ namespace {
   Real tau_relax_g;
   Real gamma_g;
 
-  // Tracer threshold: tr > tr_thresh = pristine gas (apply relaxation)
+  Real M_BH_g;       // BH mass (for Keplerian velocity, excludes NSC) [g]
+
+  // Tracer threshold: tr < tr_thresh = pristine gas (apply relaxation)
   Real tr_thresh_g;
 
   // G2 cloud (M3)
@@ -67,13 +70,14 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   gamma_g= pin->GetOrAddReal("hydro",   "gamma", 1.6666666667);
 
   Real M_BH   = pin->GetOrAddReal("problem", "M_BH",  4.31e6) * M_sun;
+  M_BH_g = M_BH;   // save for ProblemGenerator Keplerian velocity
   int  use_nsc = pin->GetOrAddInteger("problem", "use_nsc", 0);
   Real M_NSC  = 0.0;
   if (use_nsc) M_NSC = pin->GetOrAddReal("problem", "M_NSC", 0.66e6) * M_sun;
   M_grav_g = M_BH + M_NSC;
 
   tau_relax_g = pin->GetOrAddReal("problem", "tau_relax", 0.0);
-  tr_thresh_g = pin->GetOrAddReal("problem", "tr_thresh",  0.5);
+  tr_thresh_g = pin->GetOrAddReal("problem", "tr_thresh",  1e-4);
 
   // G2 cloud position from Burkert+12 CC01 (Cartesian, orbital plane)
   Real x_G2 = pin->GetOrAddReal("problem", "x_G2", -7.22e16);
@@ -136,21 +140,30 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
     Real rho = in_cloud ? rho_G2_g : rho_amb;
     Real P   = in_cloud ? rho_G2_g * k_B * T_G2_g / (mu_g * m_H) : P_amb;
 
+    // Keplerian tangential velocity for cloud cells (circular orbit at r_G2).
+    // v_th < 0: cloud moves toward smaller theta (prograde, approaching north pole).
+    // For G2 approaching periapsis from theta~73 deg, prograde = decreasing theta.
+    Real v_th = 0.0;
+    if (in_cloud) {
+      Real v_kep = std::sqrt(G_N * M_BH_g / r_G2_g);  // circular speed at r_G2
+      v_th = -v_kep;   // prograde: decreasing theta; flip sign for retrograde
+    }
+
     phydro->w(IDN,k,j,i) = rho;
     phydro->w(IVX,k,j,i) = 0.0;
-    phydro->w(IVY,k,j,i) = 0.0;
+    phydro->w(IVY,k,j,i) = v_th;
     phydro->w(IVZ,k,j,i) = 0.0;
     phydro->w(IPR,k,j,i) = P;
 
     phydro->u(IDN,k,j,i) = rho;
     phydro->u(IM1,k,j,i) = 0.0;
-    phydro->u(IM2,k,j,i) = 0.0;
+    phydro->u(IM2,k,j,i) = rho * v_th;
     phydro->u(IM3,k,j,i) = 0.0;
-    phydro->u(IEN,k,j,i) = P / gm1;
+    phydro->u(IEN,k,j,i) = P / gm1 + 0.5 * rho * v_th * v_th;
 
 #if NSCALARS > 0
-    // tr=1: pristine atmosphere,  tr=0: G2 cloud material
-    Real tr = in_cloud ? 0.0 : 1.0;
+    // tr=0: pristine atmosphere,  tr=1: G2 cloud material  (Burkert+12 convention)
+    Real tr = in_cloud ? 1.0 : 0.0;
     pscalars->r(0, k, j, i) = tr;
     pscalars->s(0, k, j, i) = rho * tr;  // conserved: rho * tracer
 #endif
@@ -179,7 +192,7 @@ void BurkertInnerBC(MeshBlock *pmb, Coordinates *pco,
     }
   }
   // Scalar BC: default outflow (copy from innermost active cell).
-  // G2 starts far from inner boundary, so inner tracer stays ~1.
+  // G2 starts far from inner boundary, so inner tracer stays ~0 (pristine).
 }
 
 //----------------------------------------------------------------------------------------
@@ -188,8 +201,9 @@ void BHGravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
                        const AthenaArray<Real> &prim, const AthenaArray<Real> &prim_scalar,
                        const AthenaArray<Real> &bcc, AthenaArray<Real> &cons,
                        AthenaArray<Real> &cons_scalar) {
-  const Real gm1      = gamma_g - 1.0;
-  const bool do_relax = (tau_relax_g > 0.0);
+  const Real gm1       = gamma_g - 1.0;
+  const bool do_instant = (tau_relax_g == 0.0);   // direct Dirichlet reset each step
+  const bool do_relax   = (tau_relax_g >  0.0);   // exponential nudge with timescale tau
 
   for (int k=pmb->ks; k<=pmb->ke; ++k)
   for (int j=pmb->js; j<=pmb->je; ++j)
@@ -206,22 +220,40 @@ void BHGravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
     cons(IEN, k, j, i) += dt * rho * v_r * a_r;
 
     // 2. Tracer-conditioned Burkert relaxation
-    if (do_relax) {
+    //    tr < tr_thresh → pristine background → apply relaxation
+    //    tr >= tr_thresh → cloud material     → evolve freely
 #if NSCALARS > 0
-      bool pristine = (prim_scalar(0, k, j, i) > tr_thresh_g);
+    const Real tr      = prim_scalar(0, k, j, i);   // primitive tracer (= s/rho)
+    const bool pristine = (tr < tr_thresh_g);
 #else
-      bool pristine = true;  // no tracer: always relax (M2 fallback)
+    const Real tr       = 0.0;
+    const bool pristine = true;  // no tracer: always relax (M2 fallback)
 #endif
-      if (pristine) {
-        Real rho_eq  = rho0_g * (r0_g / r);
-        Real P_eq    = rho_eq * k_B * T0_g * (r0_g / r) / (mu_g * m_H);
-        Real inv_tau = dt / tau_relax_g;
-        cons(IDN, k, j, i) -= inv_tau * (rho - rho_eq);
-        cons(IM1, k, j, i) -= inv_tau * rho * v_r;
-        cons(IM2, k, j, i) -= inv_tau * rho * v_t;
-        cons(IEN, k, j, i) -= inv_tau * (P - P_eq) / gm1;
-        // G2 cells (pristine=false): no relaxation → cloud evolves freely
-      }
+
+    if (do_instant && pristine) {
+      // tau_relax = 0: hard reset to Burkert equilibrium every timestep
+      Real rho_eq = rho0_g * (r0_g / r);
+      Real P_eq   = rho_eq * k_B * T0_g * (r0_g / r) / (mu_g * m_H);
+      cons(IDN, k, j, i) = rho_eq;
+      cons(IM1, k, j, i) = 0.0;
+      cons(IM2, k, j, i) = 0.0;
+      cons(IEN, k, j, i) = P_eq / gm1;
+#if NSCALARS > 0
+      cons_scalar(0, k, j, i) = rho_eq * tr;   // preserve tracer fraction
+#endif
+    } else if (do_relax && pristine) {
+      // tau_relax > 0: exponential nudge toward equilibrium
+      Real rho_eq  = rho0_g * (r0_g / r);
+      Real P_eq    = rho_eq * k_B * T0_g * (r0_g / r) / (mu_g * m_H);
+      Real inv_tau = dt / tau_relax_g;
+      cons(IDN, k, j, i) -= inv_tau * (rho - rho_eq);
+      cons(IM1, k, j, i) -= inv_tau * rho * v_r;
+      cons(IM2, k, j, i) -= inv_tau * rho * v_t;
+      cons(IEN, k, j, i) -= inv_tau * (P - P_eq) / gm1;
+#if NSCALARS > 0
+      cons_scalar(0, k, j, i) = cons(IDN, k, j, i) * tr;  // keep tr = s/rho consistent
+#endif
     }
+    // cloud cells (pristine=false): no relaxation → cloud evolves freely
   }
 }

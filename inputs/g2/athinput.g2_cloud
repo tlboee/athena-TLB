@@ -36,8 +36,8 @@ ix3_bc     = periodic
 ox3_bc     = periodic
 
 <meshblock>
-nx1        = 256
-nx2        = 128
+nx1        = 64
+nx2        = 32
 nx3        = 1
 
 <hydro>

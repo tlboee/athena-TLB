@@ -43,6 +43,7 @@ nx3        = 1
 <hydro>
 gamma      = 1.6666666667
 dfloor     = 1.0e-30
+sfloor     = 0.0
 
 <problem>
 rho0       = 9.5e-22

@@ -26,9 +26,9 @@ x1max      = 1.2e16
 ix1_bc     = outflow
 ox1_bc     = outflow
 
-nx2        = 160           # dy = 5.44e14 cm
+nx2        = 192           # dy = 5.55e14 cm, 8 x 6 = 48 Meshblocks
 x2min      = -6.2e16
-x2max      = 2.5e16
+x2max      = 4.45e16       # Burkert: 2.5e16; hoeher, damit die Wolke den Rand nicht beruehrt
 ix2_bc     = outflow
 ox2_bc     = outflow
 
@@ -39,7 +39,7 @@ ix3_bc     = periodic
 ox3_bc     = periodic
 
 <meshblock>
-nx1        = 32            # 8 x 5 = 40 Meshblocks
+nx1        = 32
 nx2        = 32
 nx3        = 1
 
@@ -57,6 +57,7 @@ mu         = 0.614
 T0         = -1.0          # <= 0: hydrostatisch berechnet (2.13e8 K)
 r_in       = 1.0e15        # cm, Bereich um das Schwarze Loch (Perizentrum: 4.0e15)
 tr_thresh  = 1.0e-4
+edge_buffer = 2            # Zellen am Rand, die jeden Schritt zurueckgesetzt werden
 
 # Wolke CC01 (Burkert+12, Tabelle 1)
 x_cloud    = -7.22e16      # cm

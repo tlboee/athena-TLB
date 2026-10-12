@@ -15,8 +15,9 @@
 //   - Tracer r0: 1 = Wolkenmaterial, 0 = unberuehrtes Umgebungsgas
 //   - Zellen mit tr < tr_thresh werden jeden Schritt auf Gleichgewicht gesetzt
 //     (Burkert+12: tr <= 1e-4). tr wird aus dem AKTUELLEN Zustand berechnet.
-//   - Aeussere Raender: outflow. Da die Randzellen pristine sind und auf v = 0
-//     zurueckgesetzt werden, wirkt das wie ein hydrostatischer Rand ohne Einstroem.
+//   - Raender: outflow plus Pufferzone (edge_buffer Zellen), die jeden Schritt auf
+//     Gleichgewicht mit v = 0 und tr = 0 gesetzt wird. Die Geisterzellen kopieren
+//     damit nur Gleichgewichtswerte: Ausfluss ja, Einstroem von Tracer nein.
 //========================================================================================
 
 #include <algorithm>
@@ -47,6 +48,7 @@ constexpr Real km    = 1.0e5;
 
 // Globale Parameter (in InitUserMeshData gesetzt)
 Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g;
+Real x1min_g, x1max_g, x2min_g, x2max_g, buf_g;
 
 // Gleichgewichtsprofil; innerhalb r_in konstant (ausgeschnittener Bereich)
 void Equilibrium(Real r, Real &rho, Real &P) {
@@ -88,11 +90,22 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   // T0 <= 0: exakt hydrostatisch, aus k_B T r / (mu m_H) = G M / 2
   if (T0_g <= 0.0) T0_g = mu_g * m_H * GM_g / (2.0 * k_B * r0_g);
 
+  // Pufferzone am Rand: edge_buffer Zellen breit
+  x1min_g = mesh_size.x1min;
+  x1max_g = mesh_size.x1max;
+  x2min_g = mesh_size.x2min;
+  x2max_g = mesh_size.x2max;
+  const Real dx = (x1max_g - x1min_g) / mesh_size.nx1;
+  const Real dy = (x2max_g - x2min_g) / mesh_size.nx2;
+  const int nbuf = pin->GetOrAddInteger("problem", "edge_buffer", 2);
+  buf_g = nbuf * std::max(dx, dy);
+
   EnrollUserExplicitSourceFunction(GravityAndRelax);
 
   if (Globals::my_rank == 0) {
     std::cout << "[g2_cartesian] mu = " << mu_g << ", T0 = " << T0_g << " K"
-              << ", r_in = " << r_in_g << " cm, tr_thresh = " << tr_thresh_g << std::endl;
+              << ", r_in = " << r_in_g << " cm, tr_thresh = " << tr_thresh_g
+              << ", edge buffer = " << buf_g << " cm" << std::endl;
   }
 }
 
@@ -165,8 +178,10 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         const Real y = pmb->pcoord->x2v(j);
         const Real r = std::sqrt(x*x + y*y);
 
-        // 1. Bereich um das Schwarze Loch: immer zuruecksetzen (Senke)
-        if (r < r_in_g) {
+        // 1. Senke um das Schwarze Loch und Pufferzone am Rand: immer zuruecksetzen
+        const bool in_buffer = (x < x1min_g + buf_g) || (x > x1max_g - buf_g) ||
+                               (y < x2min_g + buf_g) || (y > x2max_g - buf_g);
+        if (r < r_in_g || in_buffer) {
           Real rho_eq, P_eq;
           Equilibrium(r, rho_eq, P_eq);
           cons(IDN, k, j, i) = rho_eq;

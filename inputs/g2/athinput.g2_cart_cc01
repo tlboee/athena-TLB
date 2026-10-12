@@ -58,6 +58,7 @@ T0         = -1.0          # <= 0: hydrostatisch berechnet (2.13e8 K)
 r_in       = 1.0e15        # cm, Bereich um das Schwarze Loch (Perizentrum: 4.0e15)
 tr_thresh  = 1.0e-4
 edge_buffer = 2            # Zellen am Rand, die jeden Schritt zurueckgesetzt werden
+T_floor    = 1.0e4         # K, Temperaturboden (Photoionisation), Schutz gegen negative Druecke
 
 # Wolke CC01 (Burkert+12, Tabelle 1)
 x_cloud    = -7.22e16      # cm

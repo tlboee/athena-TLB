@@ -7,7 +7,8 @@
 //                        --nscalars=1 --nghost=4 -mpi
 //
 // Physik:
-//   - Schwarzes Loch (Punktmasse) im Ursprung, Gravitation als Quellterm
+//   - Schwarzes Loch (Punktmasse) im Ursprung, Gravitation als Quellterm.
+//     Energieterm mit mittlerem Impuls -> Gravitation aendert die innere Energie nicht.
 //   - Atmosphaere: rho = rho0 r0/r, T = T0 r0/r, hydrostatisch fuer
 //     T0 = mu m_H G M / (2 k_B r0)  (wird berechnet, wenn T0 <= 0 im Input)
 //   - Bereich r < r_in um das Schwarze Loch: jeder Zeitschritt auf
@@ -15,6 +16,8 @@
 //   - Tracer r0: 1 = Wolkenmaterial, 0 = unberuehrtes Umgebungsgas
 //   - Zellen mit tr < tr_thresh werden jeden Schritt auf Gleichgewicht gesetzt
 //     (Burkert+12: tr <= 1e-4). tr wird aus dem AKTUELLEN Zustand berechnet.
+//   - Temperaturboden T_floor (Default 1e4 K, Photoionisation) als Schutz gegen
+//     negative Druecke in kaltem, schnellem Gas.
 //   - Raender: outflow plus Pufferzone (edge_buffer Zellen), die jeden Schritt auf
 //     Gleichgewicht mit v = 0 und tr = 0 gesetzt wird. Die Geisterzellen kopieren
 //     damit nur Gleichgewichtswerte: Ausfluss ja, Einstroem von Tracer nein.
@@ -47,7 +50,7 @@ constexpr Real M_sun = 1.989e33;
 constexpr Real km    = 1.0e5;
 
 // Globale Parameter (in InitUserMeshData gesetzt)
-Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g;
+Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g, T_floor_g;
 Real x1min_g, x1max_g, x2min_g, x2max_g, buf_g;
 
 // Gleichgewichtsprofil; innerhalb r_in konstant (ausgeschnittener Bereich)
@@ -56,6 +59,19 @@ void Equilibrium(Real r, Real &rho, Real &P) {
   rho = rho0_g * r0_g / rr;
   const Real T = T0_g * r0_g / rr;
   P = rho * k_B * T / (mu_g * m_H);
+}
+
+// Zelle auf Gleichgewicht mit v = 0 setzen; Tracer-Konzentration tr bleibt erhalten
+void ResetCell(AthenaArray<Real> &cons, AthenaArray<Real> &cons_scalar,
+               int k, int j, int i, Real r, Real gm1, Real tr) {
+  Real rho_eq, P_eq;
+  Equilibrium(r, rho_eq, P_eq);
+  cons(IDN, k, j, i) = rho_eq;
+  cons(IM1, k, j, i) = 0.0;
+  cons(IM2, k, j, i) = 0.0;
+  cons(IM3, k, j, i) = 0.0;
+  cons(IEN, k, j, i) = P_eq / gm1;
+  cons_scalar(0, k, j, i) = rho_eq * tr;
 }
 
 void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
@@ -86,6 +102,7 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   T0_g        = pin->GetOrAddReal("problem", "T0", -1.0);
   r_in_g      = pin->GetOrAddReal("problem", "r_in", 1.0e15);
   tr_thresh_g = pin->GetOrAddReal("problem", "tr_thresh", 1.0e-4);
+  T_floor_g   = pin->GetOrAddReal("problem", "T_floor", 1.0e4);
 
   // T0 <= 0: exakt hydrostatisch, aus k_B T r / (mu m_H) = G M / 2
   if (T0_g <= 0.0) T0_g = mu_g * m_H * GM_g / (2.0 * k_B * r0_g);
@@ -105,7 +122,8 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   if (Globals::my_rank == 0) {
     std::cout << "[g2_cartesian] mu = " << mu_g << ", T0 = " << T0_g << " K"
               << ", r_in = " << r_in_g << " cm, tr_thresh = " << tr_thresh_g
-              << ", edge buffer = " << buf_g << " cm" << std::endl;
+              << ", edge buffer = " << buf_g << " cm, T_floor = " << T_floor_g << " K"
+              << std::endl;
   }
 }
 
@@ -169,7 +187,8 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
                      const AthenaArray<Real> &prim, const AthenaArray<Real> &prim_scalar,
                      const AthenaArray<Real> &bcc, AthenaArray<Real> &cons,
                      AthenaArray<Real> &cons_scalar) {
-  const Real gm1 = pmb->peos->GetGamma() - 1.0;
+  const Real gm1  = pmb->peos->GetGamma() - 1.0;
+  const Real eint_per_rho_floor = k_B * T_floor_g / (mu_g * m_H * gm1);
 
   for (int k=pmb->ks; k<=pmb->ke; ++k) {
     for (int j=pmb->js; j<=pmb->je; ++j) {
@@ -177,43 +196,40 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         const Real x = pmb->pcoord->x1v(i);
         const Real y = pmb->pcoord->x2v(j);
         const Real r = std::sqrt(x*x + y*y);
+        const Real rho = cons(IDN, k, j, i);
 
-        // 1. Senke um das Schwarze Loch und Pufferzone am Rand: immer zuruecksetzen
+        // 1. Senke, Pufferzone am Rand und unphysikalische Dichte: zuruecksetzen
         const bool in_buffer = (x < x1min_g + buf_g) || (x > x1max_g - buf_g) ||
                                (y < x2min_g + buf_g) || (y > x2max_g - buf_g);
-        if (r < r_in_g || in_buffer) {
-          Real rho_eq, P_eq;
-          Equilibrium(r, rho_eq, P_eq);
-          cons(IDN, k, j, i) = rho_eq;
-          cons(IM1, k, j, i) = 0.0;
-          cons(IM2, k, j, i) = 0.0;
-          cons(IM3, k, j, i) = 0.0;
-          cons(IEN, k, j, i) = P_eq / gm1;
-          cons_scalar(0, k, j, i) = 0.0;
+        if (r < r_in_g || in_buffer || !(rho > 0.0)) {
+          ResetCell(cons, cons_scalar, k, j, i, r, gm1, 0.0);
           continue;
         }
 
-        // 2. Gravitation der Punktmasse
-        const Real rho = prim(IDN, k, j, i);
+        // 2. Gravitation, energieerhaltend: dE = dt a . (m_alt + m_neu)/2 = dE_kin
         const Real r3  = r * r * r;
         const Real ax  = -GM_g * x / r3;
         const Real ay  = -GM_g * y / r3;
-        cons(IM1, k, j, i) += dt * rho * ax;
-        cons(IM2, k, j, i) += dt * rho * ay;
-        cons(IEN, k, j, i) += dt * rho * (prim(IVX, k, j, i) * ax + prim(IVY, k, j, i) * ay);
+        const Real m1  = cons(IM1, k, j, i);
+        const Real m2  = cons(IM2, k, j, i);
+        const Real dm1 = dt * rho * ax;
+        const Real dm2 = dt * rho * ay;
+        cons(IM1, k, j, i) = m1 + dm1;
+        cons(IM2, k, j, i) = m2 + dm2;
+        cons(IEN, k, j, i) += dt * (ax * (m1 + 0.5 * dm1) + ay * (m2 + 0.5 * dm2));
 
         // 3. Pristine Zellen auf Gleichgewicht setzen (Tracer aus aktuellem Zustand)
-        const Real tr = cons_scalar(0, k, j, i) / cons(IDN, k, j, i);
+        const Real tr = cons_scalar(0, k, j, i) / rho;
         if (tr < tr_thresh_g) {
-          Real rho_eq, P_eq;
-          Equilibrium(r, rho_eq, P_eq);
-          cons(IDN, k, j, i) = rho_eq;
-          cons(IM1, k, j, i) = 0.0;
-          cons(IM2, k, j, i) = 0.0;
-          cons(IM3, k, j, i) = 0.0;
-          cons(IEN, k, j, i) = P_eq / gm1;
-          cons_scalar(0, k, j, i) = rho_eq * tr;
+          ResetCell(cons, cons_scalar, k, j, i, r, gm1, tr);
+          continue;
         }
+
+        // 4. Temperaturboden fuer Wolken-/Mischgas
+        const Real ekin = 0.5 * (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i))
+                                 + SQR(cons(IM3, k, j, i))) / rho;
+        const Real eint_min = rho * eint_per_rho_floor;
+        if (cons(IEN, k, j, i) - ekin < eint_min) cons(IEN, k, j, i) = ekin + eint_min;
       }
     }
   }

@@ -13,11 +13,6 @@ file_type  = tab
 variable   = prim
 dt         = 1.0e7       # alle ~0.32 yr
 
-<output2>
-file_type  = tab
-variable   = scalar
-dt         = 1.0e7
-
 <mesh>
 nx1        = 256
 x1min      = 3.0e15

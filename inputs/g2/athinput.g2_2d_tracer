@@ -1,7 +1,7 @@
 <comment>
 problem   = G2 ambient medium + G2 cloud tracer (M3)
 config    = --prob=g2_ambient --coord=spherical_polar --nscalars=1
-method    = Burkert+12 relaxation (use_nsc=0, tau_relax=1yr) + passive tracer
+method    = Burkert+12 relaxation (use_nsc=0, tau_relax=0, instant) + passive tracer
 
 <job>
 problem_id = g2_2d_tracer
@@ -50,7 +50,7 @@ r0         = 1.0e16
 mu         = 0.5
 M_BH       = 4.31e6
 use_nsc    = 0
-tau_relax  = 3.156e7
+tau_relax  = 0.0
 tr_thresh  = 0.5
 
 # G2 cloud (Burkert+12 CC01 initial position)

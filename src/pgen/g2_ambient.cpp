@@ -223,7 +223,7 @@ void BHGravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
     //    tr < tr_thresh → pristine background → apply relaxation
     //    tr >= tr_thresh → cloud material     → evolve freely
 #if NSCALARS > 0
-    const Real tr      = prim_scalar(0, k, j, i);   // primitive tracer (= s/rho)
+    const Real tr      = cons_scalar(0, k, j, i) / cons(IDN, k, j, i);  // tracer from current state (after flux update)
     const bool pristine = (tr < tr_thresh_g);
 #else
     const Real tr       = 0.0;

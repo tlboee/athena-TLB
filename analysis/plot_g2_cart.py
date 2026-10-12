@@ -1,9 +1,9 @@
-import glob, os, re
+import glob, os, re, sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
-RUN   = os.path.expanduser("~/athena/runs/g2_cart_cc01")
+RUN   = os.path.expanduser(sys.argv[1] if len(sys.argv) > 1 else "~/athena/runs/g2_cart_cc01")
 BASE  = "g2_cart"
 YR    = 3.156e7
 SNAPS = [0, 20, 30, 34, 36, 40]     # 0, 10, 15, 17, 18, 20 yr (Output alle 0.5 yr)

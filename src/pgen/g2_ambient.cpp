@@ -216,8 +216,11 @@ void BHGravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
 
     // 1. Gravity (always)
     Real a_r = -G_N * M_grav_g / (r * r);
-    cons(IM1, k, j, i) += dt * rho * a_r;
-    cons(IEN, k, j, i) += dt * rho * v_r * a_r;
+    // energieerhaltend: dE = dt a (m_alt + dm/2) = dE_kin, aendert die innere Energie nicht
+    const Real m1_old = cons(IM1, k, j, i);
+    const Real dm1    = dt * cons(IDN, k, j, i) * a_r;
+    cons(IM1, k, j, i) = m1_old + dm1;
+    cons(IEN, k, j, i) += dt * a_r * (m1_old + 0.5 * dm1);
 
     // 2. Tracer-conditioned Burkert relaxation
     //    tr < tr_thresh → pristine background → apply relaxation

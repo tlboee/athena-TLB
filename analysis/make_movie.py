@@ -1,8 +1,8 @@
 """Film aus den Snapshots eines G2-Laufs: Dichte und Tracer nebeneinander.
 
 Aufruf (JupyterHub-Notebook):
-  %run ~/athena/analysis/make_movie.py <run_dir> [--fps 6] [--zoom x0,x1,y0,y1] [--out name]
-  --zoom in Einheiten von 1e16 cm, z.B. --zoom -4,1.5,-2.5,3 fuer das Perizentrum
+  %run ~/athena/analysis/make_movie.py <run_dir> [--fps 6] [--zoom=x0,x1,y0,y1] [--out name]
+  --zoom in Einheiten von 1e16 cm, z.B. --zoom=-4,1.5,-2.5,3 (mit "=", weil der Wert mit "-" beginnt) fuer das Perizentrum
 """
 import argparse, os, shutil, sys
 import numpy as np

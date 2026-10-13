@@ -68,3 +68,7 @@ vy_cloud   =  48.45        # km/s
 R_cloud    = 1.87e15       # cm
 T_cloud    = 1.0e4         # K
 rho_cloud  = 6.21e-19      # Tabelle CC01 (Burkert+12, Schartmann+12)
+
+<output2>
+file_type  = rst
+dt         = 6.312e7       # Restart-Datei alle 2 yr

@@ -20,9 +20,9 @@
 
 // See if we have FP16 support
 #if !defined(__INTEL_LLVM_COMPILER) && !defined(_CRAYC) && !defined(__cray__)
-#if defined(__fp16) || defined(__FLT16_MAX__) || defined(__ARM_FP16_FORMAT_IEEE)
+#if defined(__ARM_FP16_FORMAT_IEEE) || defined(__fp16)
 #define fp16_t __fp16
-#elif defined(_Float16)
+#elif defined(__FLT16_MAX__)   // x86 GCC >= 12: _Float16 (keyword, not a macro)
 #define fp16_t _Float16
 #endif
 #else

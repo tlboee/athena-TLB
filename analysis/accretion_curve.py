@@ -27,11 +27,12 @@ s = np.asarray(h["0-scalar"])[keep]
 cnt = {}
 for name in ["M_sink", "M_buffer", "M_reset"]:
     c = np.asarray(h[name])[keep].copy()
-    # Falls ein Zaehler bei einem Neustart auf 0 zurueckgesetzt wurde: fortsetzen
-    for i in range(1, len(c)):
-        if c[i] < 0.5 * c[i-1] and c[i-1] > 0:
-            print(f"Hinweis: {name} springt bei t = {t[i]:.2f} yr zurueck -> wird fortgesetzt")
-            c[i:] += c[i-1] - c[i]
+    # Monoton wachsende Zaehler: Sprung auf ~0 nach einem Neustart erkennen und fortsetzen
+    if name != "M_reset":
+        for i in range(1, len(c)):
+            if c[i-1] > 1e-6 * s[0] and c[i] < 0.5 * c[i-1]:
+                print(f"Hinweis: {name} springt bei t = {t[i]:.2f} yr zurueck -> wird fortgesetzt")
+                c[i:] += c[i-1] - c[i]
     cnt[name] = c
 
 M0   = s[0]
@@ -55,7 +56,7 @@ def at(year, arr):
 print(f"Lauf: {RUN}")
 print(f"History: {len(t)} Zeilen, t = {t[0]:.2f} ... {t[-1]:.2f} yr")
 for year in [2013.5, 2015.5, 2025.0, 2040.0, 2060.0]:
-    if year - T_START <= t[-1] + 1e-6:
+    if year - T_START <= t[-1] + 0.05:
         print(f"  {year:6.1f}: Verlust gesamt {at(year, loss)*100:5.1f} %   "
               f"Senke {at(year, acc['M_sink'])*100:5.1f} %   "
               f"Rand {at(year, acc['M_buffer'])*100:5.1f} %   "

@@ -1,10 +1,10 @@
 //========================================================================================
 // G2-Wolke im heissen Medium um Sgr A*, 2D kartesisch in der Bahnebene
-// Setup nach Burkert et al. (2012), Modell CC01
+// Setup nach Burkert et al. (2012) / Schartmann et al. (2012), Modell CC01
 //
 // Konfiguration:
 //   python3 configure.py --prob=g2_cartesian --coord=cartesian --flux=hllc \
-//                        --nscalars=1 --nghost=4 -mpi
+//                        --nscalars=1 --nghost=4 -mpi [-hdf5 --hdf5_path=...]
 //
 // Physik:
 //   - Schwarzes Loch (Punktmasse) im Ursprung, Gravitation als Quellterm.
@@ -12,15 +12,21 @@
 //   - Atmosphaere: rho = rho0 r0/r, T = T0 r0/r, hydrostatisch fuer
 //     T0 = mu m_H G M / (2 k_B r0)  (wird berechnet, wenn T0 <= 0 im Input)
 //   - Bereich r < r_in um das Schwarze Loch: jeder Zeitschritt auf
-//     Gleichgewicht zurueckgesetzt (wirkt als Senke, haelt den Zeitschritt endlich)
+//     Gleichgewicht zurueckgesetzt (Senke, haelt den Zeitschritt endlich)
 //   - Tracer r0: 1 = Wolkenmaterial, 0 = unberuehrtes Umgebungsgas
 //   - Zellen mit tr < tr_thresh werden jeden Schritt auf Gleichgewicht gesetzt
 //     (Burkert+12: tr <= 1e-4). tr wird aus dem AKTUELLEN Zustand berechnet.
-//   - Temperaturboden T_floor (Default 1e4 K, Photoionisation) als Schutz gegen
-//     negative Druecke in kaltem, schnellem Gas.
+//   - Temperaturboden T_floor (Default 1e4 K) fuer nicht-pristine Zellen.
 //   - Raender: outflow plus Pufferzone (edge_buffer Zellen), die jeden Schritt auf
-//     Gleichgewicht mit v = 0 und tr = 0 gesetzt wird. Die Geisterzellen kopieren
-//     damit nur Gleichgewichtswerte: Ausfluss ja, Einstroem von Tracer nein.
+//     Gleichgewicht mit v = 0 und tr = 0 gesetzt wird (Ausfluss ja, Einstroem nein).
+//
+// Diagnostik (History-Ausgabe, kumulativ, Einheit: Tracer-Masse = sum rho*tr*dV):
+//   M_sink   : in der Senke entferntes Wolkengas
+//   M_buffer : in der Pufferzone am Rand entferntes Wolkengas
+//   M_reset  : Aenderung durch das Zuruecksetzen pristiner Zellen (vorzeichenbehaftet)
+//   Die Zaehler summieren ueber alle RK-Stufen und ueberzaehlen daher um einen fuer alle
+//   Kanaele gleichen Faktor; die exakte Gesamtabnahme steht in der Spalte "0-scalar".
+//   Aufteilung: Anteil eines Kanals = Zaehler / Summe der Zaehler.
 //========================================================================================
 
 #include <algorithm>
@@ -48,6 +54,9 @@ constexpr Real k_B   = 1.380649e-16;
 constexpr Real m_H   = 1.6726e-24;
 constexpr Real M_sun = 1.989e33;
 constexpr Real km    = 1.0e5;
+
+// Indizes der Zaehler in ruser_meshblock_data[0]
+enum {CNT_SINK = 0, CNT_BUFFER = 1, CNT_RESET = 2, N_CNT = 3};
 
 // Globale Parameter (in InitUserMeshData gesetzt)
 Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g, T_floor_g;
@@ -78,6 +87,11 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
                      const AthenaArray<Real> &prim, const AthenaArray<Real> &prim_scalar,
                      const AthenaArray<Real> &bcc, AthenaArray<Real> &cons,
                      AthenaArray<Real> &cons_scalar);
+
+// History-Funktionen: Zaehler des MeshBlocks (Athena++ summiert ueber alle Bloecke)
+Real HistSink(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](CNT_SINK); }
+Real HistBuffer(MeshBlock *pmb, int iout) { return pmb->ruser_meshblock_data[0](CNT_BUFFER); }
+Real HistReset(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_RESET); }
 
 }  // namespace
 
@@ -119,12 +133,25 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
 
   EnrollUserExplicitSourceFunction(GravityAndRelax);
 
+  AllocateUserHistoryOutput(N_CNT);
+  EnrollUserHistoryOutput(CNT_SINK,   HistSink,   "M_sink");
+  EnrollUserHistoryOutput(CNT_BUFFER, HistBuffer, "M_buffer");
+  EnrollUserHistoryOutput(CNT_RESET,  HistReset,  "M_reset");
+
   if (Globals::my_rank == 0) {
     std::cout << "[g2_cartesian] mu = " << mu_g << ", T0 = " << T0_g << " K"
               << ", r_in = " << r_in_g << " cm, tr_thresh = " << tr_thresh_g
               << ", edge buffer = " << buf_g << " cm, T_floor = " << T_floor_g << " K"
               << std::endl;
   }
+}
+
+//----------------------------------------------------------------------------------------
+// Pro MeshBlock: Feld fuer die drei Zaehler (wird in Restart-Dateien mitgespeichert)
+void MeshBlock::InitUserMeshBlockData(ParameterInput *pin) {
+  AllocateRealUserMeshBlockDataField(1);
+  ruser_meshblock_data[0].NewAthenaArray(N_CNT);
+  for (int n=0; n<N_CNT; ++n) ruser_meshblock_data[0](n) = 0.0;
 }
 
 //----------------------------------------------------------------------------------------
@@ -189,6 +216,7 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
                      AthenaArray<Real> &cons_scalar) {
   const Real gm1  = pmb->peos->GetGamma() - 1.0;
   const Real eint_per_rho_floor = k_B * T_floor_g / (mu_g * m_H * gm1);
+  AthenaArray<Real> &cnt = pmb->ruser_meshblock_data[0];
 
   for (int k=pmb->ks; k<=pmb->ke; ++k) {
     for (int j=pmb->js; j<=pmb->je; ++j) {
@@ -197,11 +225,17 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         const Real y = pmb->pcoord->x2v(j);
         const Real r = std::sqrt(x*x + y*y);
         const Real rho = cons(IDN, k, j, i);
+        const Real vol = pmb->pcoord->GetCellVolume(k, j, i);
 
         // 1. Senke, Pufferzone am Rand und unphysikalische Dichte: zuruecksetzen
+        const bool in_sink   = (r < r_in_g);
         const bool in_buffer = (x < x1min_g + buf_g) || (x > x1max_g - buf_g) ||
                                (y < x2min_g + buf_g) || (y > x2max_g - buf_g);
-        if (r < r_in_g || in_buffer || !(rho > 0.0)) {
+        if (in_sink || in_buffer || !(rho > 0.0)) {
+          const Real s_old = cons_scalar(0, k, j, i) * vol;
+          if (in_sink)        cnt(CNT_SINK)   += s_old;
+          else if (in_buffer) cnt(CNT_BUFFER) += s_old;
+          else                cnt(CNT_RESET)  += s_old;
           ResetCell(cons, cons_scalar, k, j, i, r, gm1, 0.0);
           continue;
         }
@@ -221,7 +255,9 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         // 3. Pristine Zellen auf Gleichgewicht setzen (Tracer aus aktuellem Zustand)
         const Real tr = cons_scalar(0, k, j, i) / rho;
         if (tr < tr_thresh_g) {
+          const Real s_old = cons_scalar(0, k, j, i) * vol;
           ResetCell(cons, cons_scalar, k, j, i, r, gm1, tr);
+          cnt(CNT_RESET) += s_old - cons_scalar(0, k, j, i) * vol;
           continue;
         }
 

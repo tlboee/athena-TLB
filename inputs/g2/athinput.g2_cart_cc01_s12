@@ -72,3 +72,7 @@ rho_cloud  = 6.21e-19      # Tabelle CC01 (Burkert+12, Schartmann+12)
 <output2>
 file_type  = rst
 dt         = 6.312e7       # Restart-Datei alle 2 yr
+
+<output3>
+file_type  = hst
+dt         = 1.578e6       # History alle 0.05 yr (Gesamtmassen, Zaehler M_sink/M_buffer/M_reset)

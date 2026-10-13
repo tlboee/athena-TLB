@@ -1,12 +1,15 @@
 """Disruptionskurve: Wolkenmasse oberhalb von Tracer-Schwellen gegen die Zeit.
 
-Aufruf:  python3 analysis/disruption_curve.py lr      (niedrige Aufloesung, Mac)
-         %run ~/athena/analysis/disruption_curve.py hr (hohe Aufloesung, JupyterHub)
+Aufruf:  %run ~/athena/analysis/disruption_curve.py hr       (vordefinierter Satz)
+         %run ~/athena/analysis/disruption_curve.py run1 run2 (Run-Namen in ~/athena/runs)
 """
-import glob, os, sys
+import os, sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import g2_io
 
 BASE = os.path.expanduser("~/athena/runs")
 RUN_SETS = {
@@ -20,40 +23,39 @@ RUN_SETS = {
         "g2_cart_cc01_rho621": r"$\chi \approx 4900$, $\gamma = 5/3$",
         "g2_cart_cc01_g1.01":  r"$\chi \approx 2800$, $\gamma = 1.01$",
     },
+    "s12": {  # CC01 mit Schartmann+12-Normierung, bis 2060
+        "g2_cart_hr_s12": r"CC01 (Schartmann+12), $r_{\rm in} = 1.9 \times 10^{15}$ cm",
+    },
 }
-SET    = sys.argv[1] if len(sys.argv) > 1 else "hr"
-RUNS   = RUN_SETS[SET]
-PREFIX = "g2_cart"
+args = sys.argv[1:] or ["hr"]
+if args[0] in RUN_SETS:
+    SET, RUNS = args[0], RUN_SETS[args[0]]
+else:
+    SET, RUNS = "custom", {a: a for a in args}
 THRESH = [0.9, 0.99, 0.9999]
-DT_OUT = 0.5      # Jahre zwischen zwei Snapshots
-NMAX   = 40
 T_PERI = 18.0     # Perizentrum 2013.5
+YR     = g2_io.YR
 
 
 def cloud_masses(run, n):
-    """Gesamtmasse und Masse oberhalb der Schwellen (gleiche Zellvolumina -> Summe rho*tr)."""
-    files = sorted(glob.glob(f"{BASE}/{run}/{PREFIX}.block*.out1.{n:05d}.tab"))
-    if not files:
-        return None
-    d = pd.concat([pd.read_csv(f, sep=r"\s+", comment="#", header=None, usecols=[4, 9])
-                   for f in files])
-    rho, tr = d[4].to_numpy(), d[9].to_numpy()
-    m = rho * tr
+    """Zeit und Massen (gleiche Zellvolumina -> Summe rho*tr); None bei nan."""
+    t, g = g2_io.load_snapshot(os.path.join(BASE, run), n)
+    m, tr = g["rho"] * g["r0"], g["r0"]
     if not np.all(np.isfinite(m)):
-        return None                      # Snapshot mit nan (abgestuerzter Lauf)
-    return [m.sum()] + [m[tr > t].sum() for t in THRESH]
+        return None
+    return t, [m.sum()] + [m[tr > th].sum() for th in THRESH]
 
 
 results = {}
 for run in RUNS:
     rows = []
-    for n in range(NMAX + 1):
+    for n in g2_io.snapshot_numbers(os.path.join(BASE, run)):
         r = cloud_masses(run, n)
         if r is not None:
-            rows.append([n * DT_OUT] + r)
-    df = pd.DataFrame(rows, columns=["t_yr", "M_tot"] + [f"M_tr>{t}" for t in THRESH])
+            rows.append([r[0] / YR] + r[1])
+    df = pd.DataFrame(rows, columns=["t_yr", "M_tot"] + [f"M_tr>{th}" for th in THRESH])
     df.iloc[:, 1:] /= df["M_tot"].iloc[0]          # relativ zur Anfangsmasse
-    df.to_csv(f"{BASE}/{run}/disruption.csv", index=False)
+    df.to_csv(os.path.join(BASE, run, "disruption.csv"), index=False)
     results[run] = df
     print(f"{run}: {len(df)} Snapshots bis t = {df['t_yr'].iloc[-1]:.1f} yr")
 
@@ -69,22 +71,23 @@ def t_below(df, col, level):
 
 
 print(f"\nSatz '{SET}': Zeitpunkte, an denen die Masse unter 50 % faellt")
-print(f"  {'Lauf':22s} {'tr>0.9999':>10s} {'tr>0.99':>10s}   Masse(tr>0.9999) nach 0.5 yr")
+print(f"  {'Lauf':22s} {'tr>0.9999':>10s} {'tr>0.99':>10s}   Kern nach 1. Snapshot   M_tot am Ende")
 for run, df in results.items():
     a, b = t_below(df, "M_tr>0.9999", 0.5), t_below(df, "M_tr>0.99", 0.5)
     fa = f"{a:6.2f} yr" if a else "     -   "
     fb = f"{b:6.2f} yr" if b else "     -   "
-    print(f"  {run:22s} {fa:>10s} {fb:>10s}   {df['M_tr>0.9999'].iloc[1]:.3f}")
+    print(f"  {run:22s} {fa:>10s} {fb:>10s}   {df['M_tr>0.9999'].iloc[1]:.3f}"
+          f"                  {df['M_tot'].iloc[-1]:.3f}")
 
 fig, axes = plt.subplots(1, len(THRESH), figsize=(5 * len(THRESH), 4.2), sharey=True,
                          constrained_layout=True)
-for ax, thr in zip(axes, THRESH):
-    for (run, label), c in zip(RUNS.items(), ["C0", "C1", "C2"]):
+for ax, th in zip(axes, THRESH):
+    for (run, label), c in zip(RUNS.items(), ["C0", "C1", "C2", "C3", "C4"]):
         df = results[run]
-        ax.plot(df["t_yr"], df[f"M_tr>{thr}"], color=c, label=label)
+        ax.plot(df["t_yr"], df[f"M_tr>{th}"], color=c, label=label)
         ax.plot(df["t_yr"], df["M_tot"], color=c, ls=":", lw=1)
     ax.axvline(T_PERI, color="grey", ls="--", lw=0.8)
-    ax.set_title(f"tr > {thr}  ({SET})")
+    ax.set_title(f"tr > {th}  ({SET})")
     ax.set_xlabel("t [yr] seit 1995.5")
     ax.set_ylim(0, 1.05)
 axes[0].set_ylabel("Masse / Anfangsmasse")

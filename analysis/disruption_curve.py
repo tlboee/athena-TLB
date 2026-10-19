@@ -32,7 +32,9 @@ RUN_SETS = {
         "g2_cart_hr_s12":     "CC01 bis 2060 (Lauf 1)",
         "g2_cart_hr_s12_acc": "CC01 bis 2060 (Lauf 2, mit Zaehlern)",
     },
-    "conv": { # Konvergenz bis 2015.5, Schartmann-Normierung
+    "conv": { # Konvergenz bis 2015.5, Schartmann-Normierung, gleiche Numerik
+        "g2_cart_lr_s12":     "256 x 192",
+        "g2_cart_mr_s12":     "512 x 384",
         "g2_cart_hr_s12_acc": "1024 x 768",
         "g2_cart_xhr_s12":    "2048 x 1536",
     },

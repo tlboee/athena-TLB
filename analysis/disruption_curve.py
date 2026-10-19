@@ -44,8 +44,8 @@ if args[0] in RUN_SETS:
     SET, RUNS = args[0], RUN_SETS[args[0]]
 else:
     SET, RUNS = "custom", {a: a for a in args}
-THRESH  = [0.9, 0.99, 0.9999]
-LEVELS  = [0.5, 0.1]   # Kriterium: Anteil, unter den die Wolkenmasse faellt
+THRESH  = [0.1, 0.5, 0.9, 0.99, 0.9999]
+LEVELS  = [0.5, 1/3, 0.1]   # Kriterium: Anteil, unter den die Wolkenmasse faellt
 T_PERI  = 18.0         # Perizentrum 2013.5
 T_CONV  = 20.0         # Vergleichszeitpunkt fuer Konvergenz (2015.5)
 YR      = g2_io.YR

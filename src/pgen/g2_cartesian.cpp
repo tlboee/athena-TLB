@@ -24,6 +24,7 @@
 //   M_sink   : in der Senke entferntes Wolkengas
 //   M_buffer : in der Pufferzone am Rand entferntes Wolkengas
 //   M_reset  : Aenderung durch das Zuruecksetzen pristiner Zellen (vorzeichenbehaftet)
+//   M_buf_tr>1/3, M_buf_tr>1/2 : Anteil von M_buffer aus Zellen mit Tracer > 1/3 bzw. > 1/2
 //   Die Zaehler summieren ueber alle RK-Stufen und ueberzaehlen daher um einen fuer alle
 //   Kanaele gleichen Faktor; die exakte Gesamtabnahme steht in der Spalte "0-scalar".
 //   Aufteilung: Anteil eines Kanals = Zaehler / Summe der Zaehler.
@@ -56,7 +57,8 @@ constexpr Real M_sun = 1.989e33;
 constexpr Real km    = 1.0e5;
 
 // Indizes der Zaehler in ruser_meshblock_data[0]
-enum {CNT_SINK = 0, CNT_BUFFER = 1, CNT_RESET = 2, N_CNT = 3};
+enum {CNT_SINK = 0, CNT_BUFFER = 1, CNT_RESET = 2, CNT_BUF_THIRD = 3, CNT_BUF_HALF = 4,
+      N_CNT = 5};
 
 // Globale Parameter (in InitUserMeshData gesetzt)
 Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g, T_floor_g;
@@ -92,6 +94,8 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
 Real HistSink(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](CNT_SINK); }
 Real HistBuffer(MeshBlock *pmb, int iout) { return pmb->ruser_meshblock_data[0](CNT_BUFFER); }
 Real HistReset(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_RESET); }
+Real HistBufThird(MeshBlock *pmb, int iout) { return pmb->ruser_meshblock_data[0](CNT_BUF_THIRD); }
+Real HistBufHalf(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_BUF_HALF); }
 
 }  // namespace
 
@@ -137,6 +141,8 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   EnrollUserHistoryOutput(CNT_SINK,   HistSink,   "M_sink");
   EnrollUserHistoryOutput(CNT_BUFFER, HistBuffer, "M_buffer");
   EnrollUserHistoryOutput(CNT_RESET,  HistReset,  "M_reset");
+  EnrollUserHistoryOutput(CNT_BUF_THIRD, HistBufThird, "M_buf_tr>1/3");
+  EnrollUserHistoryOutput(CNT_BUF_HALF,  HistBufHalf,  "M_buf_tr>1/2");
 
   if (Globals::my_rank == 0) {
     std::cout << "[g2_cartesian] mu = " << mu_g << ", T0 = " << T0_g << " K"
@@ -234,7 +240,12 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         if (in_sink || in_buffer || !(rho > 0.0)) {
           const Real s_old = cons_scalar(0, k, j, i) * vol;
           if (in_sink)        cnt(CNT_SINK)   += s_old;
-          else if (in_buffer) cnt(CNT_BUFFER) += s_old;
+          else if (in_buffer) {
+            cnt(CNT_BUFFER) += s_old;
+            const Real trc = (rho > 0.0) ? cons_scalar(0, k, j, i) / rho : 0.0;
+            if (trc > 1.0/3.0) cnt(CNT_BUF_THIRD) += s_old;
+            if (trc > 0.5)     cnt(CNT_BUF_HALF)  += s_old;
+          }
           else                cnt(CNT_RESET)  += s_old;
           ResetCell(cons, cons_scalar, k, j, i, r, gm1, 0.0);
           continue;

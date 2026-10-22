@@ -25,6 +25,8 @@
 //   M_buffer : in der Pufferzone am Rand entferntes Wolkengas
 //   M_reset  : Aenderung durch das Zuruecksetzen pristiner Zellen (vorzeichenbehaftet)
 //   M_buf_tr>1/3, M_buf_tr>1/2 : Anteil von M_buffer aus Zellen mit Tracer > 1/3 bzw. > 1/2
+//   N_rep_rho, N_rep_v, N_rep_T : Zahl der Reparaturen (Zelle x RK-Stufe) bei rho < rho_min_frac
+//            rho_eq, |v| > v_max bzw. T > T_max; dM_rep: dabei hinzugefuegte Masse [g]
 //   Die Zaehler summieren ueber alle RK-Stufen und ueberzaehlen daher um einen fuer alle
 //   Kanaele gleichen Faktor; die exakte Gesamtabnahme steht in der Spalte "0-scalar".
 //   Aufteilung: Anteil eines Kanals = Zaehler / Summe der Zaehler.
@@ -58,10 +60,11 @@ constexpr Real km    = 1.0e5;
 
 // Indizes der Zaehler in ruser_meshblock_data[0]
 enum {CNT_SINK = 0, CNT_BUFFER = 1, CNT_RESET = 2, CNT_BUF_THIRD = 3, CNT_BUF_HALF = 4,
-      N_CNT = 5};
+      CNT_REP_RHO = 5, CNT_REP_V = 6, CNT_REP_T = 7, CNT_REP_DM = 8, N_CNT = 9};
 
 // Globale Parameter (in InitUserMeshData gesetzt)
 Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g, T_floor_g;
+Real rho_min_frac_g, v_max_g, T_max_g;   // Robustheit (Reparatur unphysikalischer Zellen)
 Real x1min_g, x1max_g, x2min_g, x2max_g, buf_g;
 
 // Gleichgewichtsprofil; innerhalb r_in konstant (ausgeschnittener Bereich)
@@ -96,6 +99,10 @@ Real HistBuffer(MeshBlock *pmb, int iout) { return pmb->ruser_meshblock_data[0](
 Real HistReset(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_RESET); }
 Real HistBufThird(MeshBlock *pmb, int iout) { return pmb->ruser_meshblock_data[0](CNT_BUF_THIRD); }
 Real HistBufHalf(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_BUF_HALF); }
+Real HistRepRho(MeshBlock *pmb, int iout) { return pmb->ruser_meshblock_data[0](CNT_REP_RHO); }
+Real HistRepV(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](CNT_REP_V); }
+Real HistRepT(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](CNT_REP_T); }
+Real HistRepDM(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_REP_DM); }
 
 }  // namespace
 
@@ -121,6 +128,9 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   r_in_g      = pin->GetOrAddReal("problem", "r_in", 1.0e15);
   tr_thresh_g = pin->GetOrAddReal("problem", "tr_thresh", 1.0e-4);
   T_floor_g   = pin->GetOrAddReal("problem", "T_floor", 1.0e4);
+  rho_min_frac_g = pin->GetOrAddReal("problem", "rho_min_frac", 1.0e-3);
+  v_max_g        = pin->GetOrAddReal("problem", "v_max", 3.0e9);
+  T_max_g        = pin->GetOrAddReal("problem", "T_max", 1.0e10);
 
   // T0 <= 0: exakt hydrostatisch, aus k_B T r / (mu m_H) = G M / 2
   if (T0_g <= 0.0) T0_g = mu_g * m_H * GM_g / (2.0 * k_B * r0_g);
@@ -143,12 +153,18 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   EnrollUserHistoryOutput(CNT_RESET,  HistReset,  "M_reset");
   EnrollUserHistoryOutput(CNT_BUF_THIRD, HistBufThird, "M_buf_tr>1/3");
   EnrollUserHistoryOutput(CNT_BUF_HALF,  HistBufHalf,  "M_buf_tr>1/2");
+  EnrollUserHistoryOutput(CNT_REP_RHO, HistRepRho, "N_rep_rho");
+  EnrollUserHistoryOutput(CNT_REP_V,   HistRepV,   "N_rep_v");
+  EnrollUserHistoryOutput(CNT_REP_T,   HistRepT,   "N_rep_T");
+  EnrollUserHistoryOutput(CNT_REP_DM,  HistRepDM,  "dM_rep");
 
   if (Globals::my_rank == 0) {
     std::cout << "[g2_cartesian] mu = " << mu_g << ", T0 = " << T0_g << " K"
               << ", r_in = " << r_in_g << " cm, tr_thresh = " << tr_thresh_g
               << ", edge buffer = " << buf_g << " cm, T_floor = " << T_floor_g << " K"
               << std::endl;
+    std::cout << "[g2_cartesian] Reparatur: rho_min_frac = " << rho_min_frac_g
+              << ", v_max = " << v_max_g << " cm/s, T_max = " << T_max_g << " K" << std::endl;
   }
 }
 
@@ -222,6 +238,7 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
                      AthenaArray<Real> &cons_scalar) {
   const Real gm1  = pmb->peos->GetGamma() - 1.0;
   const Real eint_per_rho_floor = k_B * T_floor_g / (mu_g * m_H * gm1);
+  const Real eint_per_rho_max   = k_B * T_max_g / (mu_g * m_H * gm1);
   AthenaArray<Real> &cnt = pmb->ruser_meshblock_data[0];
 
   for (int k=pmb->ks; k<=pmb->ke; ++k) {
@@ -230,7 +247,7 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         const Real x = pmb->pcoord->x1v(i);
         const Real y = pmb->pcoord->x2v(j);
         const Real r = std::sqrt(x*x + y*y);
-        const Real rho = cons(IDN, k, j, i);
+        Real rho = cons(IDN, k, j, i);
         const Real vol = pmb->pcoord->GetCellVolume(k, j, i);
 
         // 1. Senke, Pufferzone am Rand und unphysikalische Dichte: zuruecksetzen
@@ -249,6 +266,41 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
           else                cnt(CNT_RESET)  += s_old;
           ResetCell(cons, cons_scalar, k, j, i, r, gm1, 0.0);
           continue;
+        }
+
+        // 1b. Robustheit: fast leere Zellen und unphysikalische Geschwindigkeit reparieren,
+        //     bevor Temperaturboden und Athena++-Boeden die kinetische Energie m^2/(2 rho)
+        //     in echte Energie umwandeln. Jede Reparatur wird gezaehlt.
+        {
+          Real rho_eq, P_eq;
+          Equilibrium(r, rho_eq, P_eq);
+          Real vx = cons(IM1, k, j, i) / rho;
+          Real vy = cons(IM2, k, j, i) / rho;
+          Real vz = cons(IM3, k, j, i) / rho;
+          const Real vv = std::sqrt(vx*vx + vy*vy + vz*vz);
+          const Real fv = (vv > v_max_g) ? v_max_g / vv : 1.0;
+          if (rho < rho_min_frac_g * rho_eq) {
+            const Real tr_old = std::min(std::max(cons_scalar(0, k, j, i) / rho, 0.0), 1.0);
+            const Real rho_new = rho_min_frac_g * rho_eq;
+            vx *= fv; vy *= fv; vz *= fv;
+            cnt(CNT_REP_RHO) += 1.0;
+            cnt(CNT_REP_DM)  += (rho_new - rho) * vol;
+            cons(IDN, k, j, i) = rho_new;
+            cons(IM1, k, j, i) = rho_new * vx;
+            cons(IM2, k, j, i) = rho_new * vy;
+            cons(IM3, k, j, i) = rho_new * vz;
+            cons(IEN, k, j, i) = P_eq / gm1 + 0.5 * rho_new * (vx*vx + vy*vy + vz*vz);
+            cons_scalar(0, k, j, i) = rho_new * tr_old;
+            rho = rho_new;
+          } else if (fv < 1.0) {
+            const Real ekin_old = 0.5 * rho * vv * vv;
+            const Real eint = std::max(cons(IEN, k, j, i) - ekin_old, rho * eint_per_rho_floor);
+            cons(IM1, k, j, i) *= fv;
+            cons(IM2, k, j, i) *= fv;
+            cons(IM3, k, j, i) *= fv;
+            cons(IEN, k, j, i) = eint + 0.5 * rho * v_max_g * v_max_g;
+            cnt(CNT_REP_V) += 1.0;
+          }
         }
 
         // 2. Gravitation, energieerhaltend: dE = dt a . (m_alt + m_neu)/2 = dE_kin
@@ -276,7 +328,12 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         const Real ekin = 0.5 * (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i))
                                  + SQR(cons(IM3, k, j, i))) / rho;
         const Real eint_min = rho * eint_per_rho_floor;
-        if (cons(IEN, k, j, i) - ekin < eint_min) cons(IEN, k, j, i) = ekin + eint_min;
+        if (cons(IEN, k, j, i) - ekin < eint_min) {
+          cons(IEN, k, j, i) = ekin + eint_min;
+        } else if (cons(IEN, k, j, i) - ekin > rho * eint_per_rho_max) {
+          cons(IEN, k, j, i) = ekin + rho * eint_per_rho_max;   // Temperatur-Obergrenze
+          cnt(CNT_REP_T) += 1.0;
+        }
       }
     }
   }

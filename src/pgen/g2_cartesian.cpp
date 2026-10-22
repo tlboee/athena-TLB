@@ -26,7 +26,8 @@
 //   M_reset  : Aenderung durch das Zuruecksetzen pristiner Zellen (vorzeichenbehaftet)
 //   M_buf_tr>1/3, M_buf_tr>1/2 : Anteil von M_buffer aus Zellen mit Tracer > 1/3 bzw. > 1/2
 //   N_rep_rho, N_rep_v, N_rep_T : Zahl der Reparaturen (Zelle x RK-Stufe) bei rho < rho_min_frac
-//            rho_eq, |v| > v_max bzw. T > T_max; dM_rep: dabei hinzugefuegte Masse [g]
+//            rho_eq, |v| > v_max bzw. T > T_max; dM_rep: dabei hinzugefuegte Masse [g];
+//            dE_rep: dabei entfernte Energie [erg] (positiv = entfernt)
 //   Die Zaehler summieren ueber alle RK-Stufen und ueberzaehlen daher um einen fuer alle
 //   Kanaele gleichen Faktor; die exakte Gesamtabnahme steht in der Spalte "0-scalar".
 //   Aufteilung: Anteil eines Kanals = Zaehler / Summe der Zaehler.
@@ -60,7 +61,8 @@ constexpr Real km    = 1.0e5;
 
 // Indizes der Zaehler in ruser_meshblock_data[0]
 enum {CNT_SINK = 0, CNT_BUFFER = 1, CNT_RESET = 2, CNT_BUF_THIRD = 3, CNT_BUF_HALF = 4,
-      CNT_REP_RHO = 5, CNT_REP_V = 6, CNT_REP_T = 7, CNT_REP_DM = 8, N_CNT = 9};
+      CNT_REP_RHO = 5, CNT_REP_V = 6, CNT_REP_T = 7, CNT_REP_DM = 8, CNT_REP_DE = 9,
+      N_CNT = 10};
 
 // Globale Parameter (in InitUserMeshData gesetzt)
 Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g, T_floor_g;
@@ -103,6 +105,7 @@ Real HistRepRho(MeshBlock *pmb, int iout) { return pmb->ruser_meshblock_data[0](
 Real HistRepV(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](CNT_REP_V); }
 Real HistRepT(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](CNT_REP_T); }
 Real HistRepDM(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_REP_DM); }
+Real HistRepDE(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_REP_DE); }
 
 }  // namespace
 
@@ -157,6 +160,7 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   EnrollUserHistoryOutput(CNT_REP_V,   HistRepV,   "N_rep_v");
   EnrollUserHistoryOutput(CNT_REP_T,   HistRepT,   "N_rep_T");
   EnrollUserHistoryOutput(CNT_REP_DM,  HistRepDM,  "dM_rep");
+  EnrollUserHistoryOutput(CNT_REP_DE,  HistRepDE,  "dE_rep");
 
   if (Globals::my_rank == 0) {
     std::cout << "[g2_cartesian] mu = " << mu_g << ", T0 = " << T0_g << " K"
@@ -285,11 +289,13 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
             vx *= fv; vy *= fv; vz *= fv;
             cnt(CNT_REP_RHO) += 1.0;
             cnt(CNT_REP_DM)  += (rho_new - rho) * vol;
+            const Real E_old = cons(IEN, k, j, i);
             cons(IDN, k, j, i) = rho_new;
             cons(IM1, k, j, i) = rho_new * vx;
             cons(IM2, k, j, i) = rho_new * vy;
             cons(IM3, k, j, i) = rho_new * vz;
             cons(IEN, k, j, i) = P_eq / gm1 + 0.5 * rho_new * (vx*vx + vy*vy + vz*vz);
+            cnt(CNT_REP_DE) += (E_old - cons(IEN, k, j, i)) * vol;
             cons_scalar(0, k, j, i) = rho_new * tr_old;
             rho = rho_new;
           } else if (fv < 1.0) {
@@ -298,6 +304,7 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
             cons(IM1, k, j, i) *= fv;
             cons(IM2, k, j, i) *= fv;
             cons(IM3, k, j, i) *= fv;
+            cnt(CNT_REP_DE) += (cons(IEN, k, j, i) - (eint + 0.5 * rho * v_max_g * v_max_g)) * vol;
             cons(IEN, k, j, i) = eint + 0.5 * rho * v_max_g * v_max_g;
             cnt(CNT_REP_V) += 1.0;
           }
@@ -331,6 +338,7 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         if (cons(IEN, k, j, i) - ekin < eint_min) {
           cons(IEN, k, j, i) = ekin + eint_min;
         } else if (cons(IEN, k, j, i) - ekin > rho * eint_per_rho_max) {
+          cnt(CNT_REP_DE) += (cons(IEN, k, j, i) - ekin - rho * eint_per_rho_max) * vol;
           cons(IEN, k, j, i) = ekin + rho * eint_per_rho_max;   // Temperatur-Obergrenze
           cnt(CNT_REP_T) += 1.0;
         }

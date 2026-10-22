@@ -32,6 +32,8 @@ R_CLOUD = 1.87e15
 R_IN    = 1.9e15
 T_HOT0  = 2.818e7                    # K, Atmosphaere am Startort
 T_END   = 100.0                      # yr seit 1995.5
+SCHEME  = "ppm"     # "ppm": PPM/CFL 0.3 durchgehend (mit Reparatur im pgen); "plm"; "mixed" (alt)
+RUN_TIMEOUT = 1500  # s pro mpirun-Aufruf; bei Stillstand wird nur dieser Lauf abgebrochen
 # Groessere Domain fuer das Gitter (Bahnen bis r_p = 3.2e16 cm), gleiche Zellgroesse wie
 # 512 x 384 in der CC01-Domain: dx = 1.42e17 / 512 = 2.7734e14 cm
 NX1, NX2, NTASKS = 768, 896, 56      # 12 x 14 = 168 Meshblocks zu 64 x 64, 3 pro Prozess
@@ -150,6 +152,10 @@ def make_runs():
     runs = {}
     base = {"vx": VX0, "vy": VY0, "chi": None, "rp": None}
     runs["ps_ref"] = dict(base, params={}, info="CC01 (Tabellendichte), Baseline")
+    runs["ps_ref_plm"] = dict(base, params={}, scheme="plm",
+                              info="Kontrolle: Baseline mit PLM durchgehend")
+    runs["ps_ref_mixed"] = dict(base, params={}, scheme="mixed",
+                                info="Kontrolle: Baseline mit altem Schema (PPM bis t_peri, dann PLM)")
     runs["ps_ref_cfl025"] = dict(base, params={"time/cfl_number": 0.25},
                                  info="Wiederholung: CFL 0.25 im ersten Abschnitt")
     runs["ps_ref_shift"] = dict(base, params={"problem/x_cloud": f"{X0 + 1.39e14:.6g}"},
@@ -178,6 +184,11 @@ def ov(d):
 def commands(run, t_end):
     t1, t2 = run["t_peri"] * YR, (run["t_peri"] + 2.0) * YR
     mp = f"mpirun -np $SLURM_NTASKS {BINARY}"
+    scheme = run.get("scheme", SCHEME)
+    if scheme in ("ppm", "plm"):
+        xo = 3 if scheme == "ppm" else 2
+        return [f"{mp} -i {INPUT} -d . {ov(COMMON)} time/xorder={xo} time/cfl_number=0.3 "
+                f"{ov(run['params'])} time/tlim={t_end * YR:.6g}"]
     return [f"{mp} -i {INPUT} -d . {ov(COMMON)} {ov(run['params'])} time/tlim={t1:.6g}",
             f"{mp} -r g2_cart.final.rst -d . time/cfl_number=0.2 time/tlim={t2:.6g}",
             f"{mp} -r g2_cart.final.rst -d . time/xorder=2 time/cfl_number=0.3 time/tlim={t_end * YR:.6g}"]
@@ -214,9 +225,9 @@ def main():
     ap.add_argument("--preflight", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--tend", type=float, default=T_END, help="Endzeit in yr (Pilot: z. B. 25)")
-    ap.add_argument("--bundle", type=int, default=3, help="Laeufe pro Slurm-Job")
-    ap.add_argument("--partition", default="dev_cpu_il")
-    ap.add_argument("--time", default="00:30:00")
+    ap.add_argument("--bundle", type=int, default=7, help="Laeufe pro Slurm-Job")
+    ap.add_argument("--partition", default="cpu_il")
+    ap.add_argument("--time", default="02:00:00")
     args = ap.parse_args()
 
     runs = make_runs()
@@ -246,7 +257,8 @@ def main():
                           capture_output=True, text=True).stdout.strip()
     for i in range(0, len(todo), args.bundle):
         group = todo[i:i + args.bundle]
-        parts = [f"( cd {d} && " + " && ".join(c) + " )" for _, d, _, c in group]
+        parts = [f"( cd {d} && " + " && ".join(f"timeout {RUN_TIMEOUT} {x}" for x in c) + " )"
+                 for _, d, _, c in group]
         wrap = f"module purge; module load {MODULES}; " + "; ".join(parts)
         jobname = f"{group[0][0]}+{len(group) - 1}" if len(group) > 1 else group[0][0]
         sb = ["sbatch", f"--partition={args.partition}", f"--time={args.time}", "--nodes=1",
@@ -266,7 +278,8 @@ def main():
                         "common": COMMON, "params": r["params"], "chi": r["chi"], "rp_target": r["rp"],
                         "vx_kms": r["vx"], "vy_kms": r["vy"], "orbit": r["orbit"],
                         "t_peri_yr": r["t_peri"], "t_end_yr": args.tend,
-                        "scheme": "PPM/CFL0.3 bis t_peri; PPM/CFL0.2 bis t_peri+2; PLM/CFL0.3 danach",
+                        "scheme": {"ppm": "PPM/CFL0.3 durchgehend, Reparatur im pgen", "plm": "PLM/CFL0.3 durchgehend",
+                                   "mixed": "PPM/CFL0.3 bis t_peri; PPM/CFL0.2 bis t_peri+2; PLM/CFL0.3 danach"}[r.get("scheme", SCHEME)],
                         "commands": c}
             with open(os.path.join(d, "manifest.json"), "w") as f:
                 json.dump(manifest, f, indent=2)

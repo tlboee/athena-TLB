@@ -185,7 +185,9 @@ out1 = os.path.join(BASE, "study_mX.png")
 fig.savefig(out1, dpi=130)
 
 # --- Abbildung 2: t_1/3,1/3 (randkorrigiert) gegen chi und r_p ------------------------------
-g = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init_rc")]
+g = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init_rc")].copy()
+lo = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init")].set_index("run")["t"]
+g["t_lo"] = g["run"].map(lo)        # unkorrigiert = untere Grenze
 grid = g[g["run"].str.startswith("g_")]
 ref = g[g["run"].str.startswith("ps_ref")]
 fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), constrained_layout=True)
@@ -196,6 +198,10 @@ for k, (rp, sub) in enumerate(grid.groupby("rp")):
     ok = np.isfinite(sub["t"]).to_numpy()
     ax.plot(sub["chi"][ok], sub["t"][ok], "o-", color=f"C{k}", label=f"r_p = {rp:.1e} cm")
     ax.plot(sub["chi"][~ok], sub["t_end"][~ok], "^", color=f"C{k}", mfc="none", ms=9)
+    for xv, a, b in zip(sub["chi"], sub["t_lo"], sub["t"].fillna(sub["t_end"])):
+        if np.isfinite(a) and a < b:
+            ax.plot([xv, xv], [a, b], color=f"C{k}", lw=1)
+            ax.plot(xv, a, "_", color=f"C{k}", ms=10)
 chis = np.logspace(1, 4, 50)
 ax.plot(chis, np.sqrt(chis) * R_C / V0 / YR, "k--", lw=1, label="t_cc (Start, CC01-Bahn)")
 ax.axhspan(18.0, 21.4, color="grey", alpha=0.15, label="Perizentrum")
@@ -208,6 +214,10 @@ for k, (chi, sub) in enumerate(grid.groupby("chi")):
     ok = np.isfinite(sub["t"]).to_numpy()
     ax.plot(sub["rp"][ok], sub["t"][ok], "o-", color=f"C{k}", label=f"chi = {chi:g}")
     ax.plot(sub["rp"][~ok], sub["t_end"][~ok], "^", color=f"C{k}", mfc="none", ms=9)
+    for xv, a, b in zip(sub["rp"], sub["t_lo"], sub["t"].fillna(sub["t_end"])):
+        if np.isfinite(a) and a < b:
+            ax.plot([xv, xv], [a, b], color=f"C{k}", lw=1)
+            ax.plot(xv, a, "_", color=f"C{k}", ms=10)
 peri = grid.drop_duplicates("rp").sort_values("rp")
 ax.plot(peri["rp"], peri["t_peri"], "k--", lw=1, label="Perizentrum")
 ax.plot(peri["rp"], peri["t_peri"] + peri["t_tid_peri"], "k:", lw=1, label="Perizentrum + t_tid")
@@ -216,7 +226,7 @@ ax.set_xlabel("r_p [cm]")
 for ax in axes:
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_ylabel("t_1/3,1/3 [yr seit 1995.5], Rand korrigiert")
+    ax.set_ylabel("t_1/3,1/3 [yr seit 1995.5]\nPunkt: Rand korrigiert, Strich: unkorrigiert")
     ax.legend(fontsize=7, title="offene Dreiecke: bis 100 yr nicht erreicht", title_fontsize=7)
 out2 = os.path.join(BASE, "study_tXY.png")
 fig.savefig(out2, dpi=150)

@@ -1,8 +1,13 @@
 """Auswertung der Parameterstudie: m_X(t), t_X,Y, Randverlust, Vergleich mit Zeitskalen.
 
-Aufruf (Notebook):  %run ~/athena/analysis/study_table.py 'g_*' ps_ref
-                    %run ~/athena/analysis/study_table.py '*_t25'      (Pilotlaeufe)
+Aufruf (Notebook):  %run ~/athena/analysis/study_table.py 'g_chi*_rp4' ... ps_ref ps_ref_ppm ...
 Liest alle Run-Ordner mit manifest.json, deren Name auf ein Muster passt.
+
+Normierungen fuer t_X,Y (Zeitpunkt, an dem m_X unter Y faellt; Zeiten in yr seit 1995.5):
+  init     m_X / m_tot(0)                         (Mischung + Akkretion + Randverlust)
+  init_rc  (m_X + Randverlust von Gas mit Tracer > X) / m_tot(0), nur X = 1/3 und 1/2
+           (ueber den Rand verlorenes Wolkengas zaehlt als noch nicht zerstoert)
+  rem      m_X / m_tot(t)                         (nur Mischung des noch vorhandenen Gases)
 """
 import fnmatch, json, math, os, sys
 import numpy as np
@@ -58,7 +63,7 @@ def t_below(t, f, level):
 
 
 def boundary(run_dir):
-    """Randverlust (Anteil der Anfangsmasse): gesamt, Tracer > 1/3, Tracer > 1/2, Senke."""
+    """Verluste als Anteil der Anfangsmasse: Senke, Rand gesamt, Rand mit Tracer > 1/3 bzw. > 1/2."""
     h = athena_read.hst(os.path.join(run_dir, "g2_cart.hst"))
     t = np.asarray(h["time"])
     _, idx = np.unique(t[::-1], return_index=True)          # Duplikate nach Restarts
@@ -93,55 +98,77 @@ for d in sorted(os.listdir(BASE)):
     runs.append(m)
 print(f"{len(runs)} Laeufe: " + ", ".join(r["name"] for r in runs))
 
-rows, curves, bounds = [], {}, {}
+rows, curves = [], {}
 for r in runs:
     df = mx_curve(r["dir"])
     bd = boundary(r["dir"])
-    curves[r["name"]], bounds[r["name"]] = df, bd
     t, tp = df["t_yr"].to_numpy(), r["t_peri_yr"]
+    corr = {"1/3": np.interp(t, bd["t_yr"], bd["buf_1/3"]),
+            "0.5": np.interp(t, bd["t_yr"], bd["buf_1/2"])}
+    curves[r["name"]] = (df, corr)
     v = math.hypot(r["vx_kms"], r["vy_kms"]) * 1e5
     t_cc = math.sqrt(r["chi_eff"]) * R_C / v / YR
-    t_tid = math.sqrt(r["rp_eff"] ** 3 / GM) / YR
     flag = bd.loc[bd["buf_1/3"] > FLAG, "t_yr"]
     base = {"run": r["name"], "chi": r["chi_eff"], "rp": r["rp_eff"], "t_peri": tp,
-            "t_end": t[-1], "t_cc0": t_cc, "t_KH0": t_cc / (2 * math.pi), "t_tid_peri": t_tid,
+            "t_end": t[-1], "t_cc0": t_cc, "t_KH0": t_cc / (2 * math.pi),
+            "t_tid_peri": math.sqrt(r["rp_eff"] ** 3 / GM) / YR,
             "sink_end": bd["sink"].iloc[-1], "buf_end": bd["buf"].iloc[-1],
             "buf13_end": bd["buf_1/3"].iloc[-1],
             "t_flag": flag.iloc[0] if len(flag) else np.nan}
     for x in XS:
         fi = df[f"m_{XN[x]}"].to_numpy()
-        fr = fi / df["m_tot"].to_numpy()
+        variants = [("init", fi), ("rem", fi / df["m_tot"].to_numpy())]
+        if XN[x] in corr:
+            variants.append(("init_rc", fi + corr[XN[x]]))
         for y in YS:
-            for norm, f in (("init", fi), ("rem", fr)):
+            for norm, f in variants:
                 tx = t_below(t, f, y)
                 rows.append(dict(base, X=XN[x], Y=YN[y], norm=norm, t=tx, t_rel=tx - tp))
 
 tab = pd.DataFrame(rows)
 tab.to_csv(os.path.join(BASE, "study_table.csv"), index=False)
 
-# --- Kompakte Uebersicht: X = 1/3 und 0.9, Y = 1/3, bezogen auf die Anfangsmasse ------------
-pd.set_option("display.width", 200)
-sel = tab[(tab["Y"] == "1/3") & (tab["norm"] == "init") & (tab["X"].isin(["1/3", "0.9"]))]
-info = sel.drop_duplicates("run").set_index("run")[["chi", "rp", "t_peri", "t_end", "t_cc0",
-                                                   "t_tid_peri", "sink_end", "buf13_end", "t_flag"]]
-wide = info.join(sel.pivot(index="run", columns="X", values="t_rel")).reset_index()
-wide = wide.rename(columns={"1/3": "t_rel(1/3,1/3)", "0.9": "t_rel(0.9,1/3)"})
-print("\nt_rel = t_X,Y - t_peri [yr] (Y = 1/3, bezogen auf die Anfangsmasse); NaN = nicht erreicht")
-print("t_flag: Zeitpunkt, ab dem > 1 % der Anfangsmasse mit Tracer > 1/3 die Box verlassen hat")
-print(wide.round(3).to_string(index=False))
 
-# --- Abbildung 1: m_X(t) fuer alle Laeufe -------------------------------------------------
+# --- Uebersicht: Zeiten in yr seit 1995.5 -----------------------------------------------------
+def pick(run, X, norm, Y="1/3"):
+    s = tab[(tab["run"] == run) & (tab["X"] == X) & (tab["Y"] == Y) & (tab["norm"] == norm)]["t"]
+    return s.iloc[0]
+
+
+def fmt(v, t_end):
+    return f"{v:7.1f}" if np.isfinite(v) else f" >{t_end:5.0f}"
+
+
+print("\nZeiten in yr seit 1995.5; '>100' = bis Laufende nicht erreicht")
+print("t(1/3)    = t_1/3,1/3 bezogen auf m_tot(0);  t(1/3)rc = dasselbe, Randverlust korrigiert")
+print("t(0.9)    = t_0.9,1/3 bezogen auf m_tot(0);  Rand! = t_flag liegt vor t(1/3) bzw. t(0.9)")
+print(f"{'run':15s} {'chi':>6s} {'r_p':>8s} {'t_peri':>6s} {'t_cc0':>6s} {'Senke':>6s} {'Rand>1/3':>8s} "
+      f"{'t_flag':>7s} {'t(1/3)':>7s} {'t(1/3)rc':>8s} {'t(0.9)':>7s}  Warnung")
+for r in runs:
+    n = r["name"]
+    b = tab[tab["run"] == n].iloc[0]
+    t13, t13c, t09 = pick(n, "1/3", "init"), pick(n, "1/3", "init_rc"), pick(n, "0.9", "init")
+    fl = b["t_flag"]
+    warn = ""
+    if np.isfinite(fl) and ((not np.isfinite(t13)) or fl < t13 or (not np.isfinite(t09)) or fl < t09):
+        warn = "Rand!"
+    print(f"{n:15s} {b['chi']:6.0f} {b['rp']:8.1e} {b['t_peri']:6.1f} {b['t_cc0']:6.1f} "
+          f"{b['sink_end']:6.3f} {b['buf13_end']:8.3f} {fmt(fl, np.inf) if np.isfinite(fl) else '      -'} "
+          f"{fmt(t13, b['t_end'])} {fmt(t13c, b['t_end']):>8s} {fmt(t09, b['t_end'])}  {warn}")
+
+# --- Abbildung 1: m_X(t) fuer alle Laeufe ---------------------------------------------------
 n = len(runs)
 nc = min(4, n)
 nr = math.ceil(n / nc)
 fig, axes = plt.subplots(nr, nc, figsize=(4 * nc, 3 * nr), sharex=True, sharey=True,
                          squeeze=False, constrained_layout=True)
 for ax, r in zip(axes.flat, runs):
-    df = curves[r["name"]]
+    df, corr = curves[r["name"]]
     tr = df["t_yr"] - r["t_peri_yr"]
     ax.plot(tr, df["m_tot"], "k", lw=1.2)
     for x in XS:
         ax.plot(tr, df[f"m_{XN[x]}"], lw=1, label=f"X = {XN[x]}")
+    ax.plot(tr, df["m_1/3"] + corr["1/3"], "--", color="C1", lw=1, label="X = 1/3 + Rand")
     for y in YS:
         ax.axhline(y, color="grey", ls=":", lw=0.7)
     ax.axvline(0, color="grey", ls="--", lw=0.7)
@@ -157,29 +184,40 @@ for ax in list(axes.flat)[n:]:
 out1 = os.path.join(BASE, "study_mX.png")
 fig.savefig(out1, dpi=130)
 
-# --- Abbildung 2: t_X,Y gegen chi und r_p, mit Zeitskalen ----------------------------------
-grid = [r for r in runs if r["chi"]]
-if len(grid) > 1:
-    g = tab[(tab["run"].isin([r["name"] for r in grid])) & (tab["X"] == "0.9") &
-            (tab["Y"] == "1/3") & (tab["norm"] == "init")]
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), constrained_layout=True)
-    for rp, sub in g.groupby("rp"):
-        sub = sub.sort_values("chi")
-        axes[0].loglog(sub["chi"], sub["t_rel"].where(sub["t_rel"] > 0), "o-", label=f"r_p = {rp:.1e}")
-    chis = np.array(sorted(g["chi"].unique()))
-    axes[0].loglog(chis, np.sqrt(chis) * R_C / V0 / YR, "k--", label="t_cc(Start)")
-    axes[0].set_xlabel("chi")
-    for chi, sub in g.groupby("chi"):
-        sub = sub.sort_values("rp")
-        axes[1].loglog(sub["rp"], sub["t_rel"].where(sub["t_rel"] > 0), "o-", label=f"chi = {chi:g}")
-    rps = np.array(sorted(g["rp"].unique()))
-    axes[1].loglog(rps, np.sqrt(rps ** 3 / GM) / YR, "k--", label="t_tid(Perizentrum)")
-    axes[1].set_xlabel("r_p [cm]")
-    for ax in axes:
-        ax.set_ylabel("t_0.9,1/3 - t_peri [yr]")
-        ax.legend(fontsize=7)
-    out2 = os.path.join(BASE, "study_tXY.png")
-    fig.savefig(out2, dpi=150)
-    print("Gespeichert:", out1, out2)
-else:
-    print("Gespeichert:", out1)
+# --- Abbildung 2: t_1/3,1/3 (randkorrigiert) gegen chi und r_p ------------------------------
+g = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init_rc")]
+grid = g[g["run"].str.startswith("g_")]
+ref = g[g["run"].str.startswith("ps_ref")]
+fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), constrained_layout=True)
+
+ax = axes[0]
+for k, (rp, sub) in enumerate(grid.groupby("rp")):
+    sub = sub.sort_values("chi")
+    ok = np.isfinite(sub["t"]).to_numpy()
+    ax.plot(sub["chi"][ok], sub["t"][ok], "o-", color=f"C{k}", label=f"r_p = {rp:.1e} cm")
+    ax.plot(sub["chi"][~ok], sub["t_end"][~ok], "^", color=f"C{k}", mfc="none", ms=9)
+chis = np.logspace(1, 4, 50)
+ax.plot(chis, np.sqrt(chis) * R_C / V0 / YR, "k--", lw=1, label="t_cc (Start, CC01-Bahn)")
+ax.axhspan(18.0, 21.4, color="grey", alpha=0.15, label="Perizentrum")
+ax.plot(ref["chi"], ref["t"], "kx", ms=8, label="CC01-Kontrollen")
+ax.set_xlabel("chi")
+
+ax = axes[1]
+for k, (chi, sub) in enumerate(grid.groupby("chi")):
+    sub = sub.sort_values("rp")
+    ok = np.isfinite(sub["t"]).to_numpy()
+    ax.plot(sub["rp"][ok], sub["t"][ok], "o-", color=f"C{k}", label=f"chi = {chi:g}")
+    ax.plot(sub["rp"][~ok], sub["t_end"][~ok], "^", color=f"C{k}", mfc="none", ms=9)
+peri = grid.drop_duplicates("rp").sort_values("rp")
+ax.plot(peri["rp"], peri["t_peri"], "k--", lw=1, label="Perizentrum")
+ax.plot(peri["rp"], peri["t_peri"] + peri["t_tid_peri"], "k:", lw=1, label="Perizentrum + t_tid")
+ax.set_xlabel("r_p [cm]")
+
+for ax in axes:
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_ylabel("t_1/3,1/3 [yr seit 1995.5], Rand korrigiert")
+    ax.legend(fontsize=7, title="offene Dreiecke: bis 100 yr nicht erreicht", title_fontsize=7)
+out2 = os.path.join(BASE, "study_tXY.png")
+fig.savefig(out2, dpi=150)
+print("Gespeichert:", out1, out2)

@@ -122,9 +122,9 @@ tab.to_csv(os.path.join(BASE, "study_table.csv"), index=False)
 # --- Kompakte Uebersicht: X = 1/3 und 0.9, Y = 1/3, bezogen auf die Anfangsmasse ------------
 pd.set_option("display.width", 200)
 sel = tab[(tab["Y"] == "1/3") & (tab["norm"] == "init") & (tab["X"].isin(["1/3", "0.9"]))]
-wide = sel.pivot_table(index=["run", "chi", "rp", "t_peri", "t_end", "t_cc0", "t_tid_peri",
-                              "sink_end", "buf13_end", "t_flag"],
-                       columns="X", values="t_rel", dropna=False).reset_index()
+info = sel.drop_duplicates("run").set_index("run")[["chi", "rp", "t_peri", "t_end", "t_cc0",
+                                                   "t_tid_peri", "sink_end", "buf13_end", "t_flag"]]
+wide = info.join(sel.pivot(index="run", columns="X", values="t_rel")).reset_index()
 wide = wide.rename(columns={"1/3": "t_rel(1/3,1/3)", "0.9": "t_rel(0.9,1/3)"})
 print("\nt_rel = t_X,Y - t_peri [yr] (Y = 1/3, bezogen auf die Anfangsmasse); NaN = nicht erreicht")
 print("t_flag: Zeitpunkt, ab dem > 1 % der Anfangsmasse mit Tracer > 1/3 die Box verlassen hat")

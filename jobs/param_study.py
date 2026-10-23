@@ -32,7 +32,7 @@ R_CLOUD = 1.87e15
 R_IN    = 1.9e15
 T_HOT0  = 2.818e7                    # K, Atmosphaere am Startort
 T_END   = 100.0                      # yr seit 1995.5
-SCHEME  = "ppm"     # "ppm": PPM/CFL 0.3 durchgehend (mit Reparatur im pgen); "plm"; "mixed" (alt)
+SCHEME  = "plm"     # "ppm": PPM/CFL 0.3 durchgehend (mit Reparatur im pgen); "plm"; "mixed" (alt)
 RUN_TIMEOUT = 1500  # s pro mpirun-Aufruf; bei Stillstand wird nur dieser Lauf abgebrochen
 # Groessere Domain fuer das Gitter (Bahnen bis r_p = 3.2e16 cm), gleiche Zellgroesse wie
 # 512 x 384 in der CC01-Domain: dx = 1.42e17 / 512 = 2.7734e14 cm
@@ -152,8 +152,8 @@ def make_runs():
     runs = {}
     base = {"vx": VX0, "vy": VY0, "chi": None, "rp": None}
     runs["ps_ref"] = dict(base, params={}, info="CC01 (Tabellendichte), Baseline")
-    runs["ps_ref_plm"] = dict(base, params={}, scheme="plm",
-                              info="Kontrolle: Baseline mit PLM durchgehend")
+    runs["ps_ref_ppm"] = dict(base, params={}, scheme="ppm",
+                              info="Kontrolle: Baseline mit PPM durchgehend (Reparatur aktiv)")
     runs["ps_ref_mixed"] = dict(base, params={}, scheme="mixed",
                                 info="Kontrolle: Baseline mit altem Schema (PPM bis t_peri, dann PLM)")
     runs["ps_ref_cfl025"] = dict(base, params={"time/cfl_number": 0.25},

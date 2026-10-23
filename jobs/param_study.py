@@ -171,6 +171,14 @@ def make_runs():
             name = f"g_chi{fmt_chi(chi)}_rp{rp / 1e15:g}"
             runs[name] = {"vx": vx, "vy": vy, "chi": chi, "rp": rp, "params": p,
                           "info": f"chi = {chi:g} (T_cloud = {T_c:.3g} K), r_p = {rp:.2g} cm"}
+    # Laeufe mit Randverlust: Domain links vergroessert, gleiche Zellgroesse
+    big_dom = dict(DOMAIN, x1min=-2.595e17)
+    for name in ["ps_ref", "ps_ref_cfl025", "ps_ref_shift", "g_chi1e4_rp4", "g_chi1e4_rp8"]:
+        r = dict(runs[name])
+        r["params"] = dict(r["params"], **{"mesh/nx1": 1152, "mesh/x1min": "-2.595e17"})
+        r["nx1"], r["ntasks"], r["dom"] = 1152, 63, big_dom
+        r["info"] = r["info"] + " | Domain links vergroessert (x1min = -2.595e17 cm, 1152 x 896)"
+        runs[name + "_big"] = r
     for run in runs.values():
         run["orbit"] = orbit(run["vx"], run["vy"])
         run["t_peri"] = round(run["orbit"]["t_peri_yr"], 2)
@@ -200,7 +208,7 @@ def preflight(name, run, dom, t_end):
     T_c = float(p.get("problem/T_cloud", 1e4))
     T_f = float(p.get("problem/T_floor", 1e4))
     out.append((T_f <= T_c * 1.0001, f"T_floor {T_f:.3g} K <= T_cloud {T_c:.3g} K"))
-    dx = (dom["x1max"] - dom["x1min"]) / NX1
+    dx = (dom["x1max"] - dom["x1min"]) / run.get("nx1", NX1)
     x0 = float(p.get("problem/x_cloud", X0))
     inside = (x0 - R_CLOUD > dom["x1min"] + 2 * dx and x0 + R_CLOUD < dom["x1max"] - 2 * dx and
               Y0 - R_CLOUD > dom["x2min"] + 2 * dx and Y0 + R_CLOUD < dom["x2max"] - 2 * dx)
@@ -212,8 +220,8 @@ def preflight(name, run, dom, t_end):
     else:
         out.append((mm > 1e16, f"Keplerbahn bis {t_end:g} yr in der Domain, Abstand min. "
                                f"{mm / 1e16:.2f} e16 cm" + ("" if mm > 1e16 else " (knapp)")))
-    nb = (NX1 // 64) * (NX2 // 64)
-    out.append((nb % NTASKS == 0, f"{nb} Meshblocks auf {NTASKS} Prozesse ({nb / NTASKS:g} pro Prozess)"))
+    nb, nt = (run.get("nx1", NX1) // 64) * (NX2 // 64), run.get("ntasks", NTASKS)
+    out.append((nb % nt == 0, f"{nb} Meshblocks auf {nt} Prozesse ({nb / nt:g} pro Prozess)"))
     return out
 
 
@@ -241,7 +249,7 @@ def main():
             print(f"{n:22s} vx={r['vx']:8.2f} vy={r['vy']:7.2f}  e={o['e']:.3f} r_p={o['rp']:.2e} "
                   f"t_peri={r['t_peri']:6.2f} yr  P={o['P_yr']:6.1f} yr  | {r['info']}")
             if args.preflight:
-                for ok, txt in preflight(n, r, dom, args.tend):
+                for ok, txt in preflight(n, r, r.get("dom", dom), args.tend):
                     print(f"      {'ok  ' if ok else 'WARN'} {txt}")
         return
 
@@ -262,7 +270,7 @@ def main():
         wrap = f"module purge; module load {MODULES}; " + "; ".join(parts)
         jobname = f"{group[0][0]}+{len(group) - 1}" if len(group) > 1 else group[0][0]
         sb = ["sbatch", f"--partition={args.partition}", f"--time={args.time}", "--nodes=1",
-              f"--ntasks={NTASKS}", "--mem=16gb", f"--job-name={jobname}",
+              f"--ntasks={max(g[2].get('ntasks', NTASKS) for g in group)}", "--mem=16gb", f"--job-name={jobname}",
               f"--output={LOGS}/{jobname}_%j.out", f"--wrap={wrap}"]
         print(f"\n== Job {i // args.bundle + 1}: " + ", ".join(g[0] for g in group))
         if args.dry_run:
@@ -274,7 +282,7 @@ def main():
         for name, d, r, c in group:
             os.makedirs(d)
             manifest = {"name": name, "info": r["info"], "date": str(datetime.date.today()),
-                        "git": head, "input": INPUT, "binary": BINARY, "ntasks": NTASKS,
+                        "git": head, "input": INPUT, "binary": BINARY, "ntasks": r.get("ntasks", NTASKS),
                         "common": COMMON, "params": r["params"], "chi": r["chi"], "rp_target": r["rp"],
                         "vx_kms": r["vx"], "vy_kms": r["vy"], "orbit": r["orbit"],
                         "t_peri_yr": r["t_peri"], "t_end_yr": args.tend,

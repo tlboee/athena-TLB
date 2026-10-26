@@ -179,6 +179,18 @@ def make_runs():
         r["nx1"], r["ntasks"], r["dom"] = 1152, 63, big_dom
         r["info"] = r["info"] + " | Domain links vergroessert (x1min = -2.595e17 cm, 1152 x 896)"
         runs[name + "_big"] = r
+    # Option B: doppelte Aufloesung (dx = 1.39e14 cm, 13.5 Zellen pro Wolkenradius)
+    x2_names = [n for n in runs if n.startswith("g_chi") and n not in
+                ("g_chi1e4_rp4", "g_chi1e4_rp8") and not n.endswith("_big")]
+    x2_names += ["g_chi1e4_rp4_big", "g_chi1e4_rp8_big", "ps_ref_big", "ps_ref_shift_big"]
+    for name in x2_names:
+        r = dict(runs[name])
+        nx1 = 2 * r.get("nx1", NX1)
+        r["params"] = dict(r["params"], **{"mesh/nx1": nx1, "mesh/nx2": 2 * NX2,
+                                             "meshblock/nx1": 128, "meshblock/nx2": 128})
+        r["nx1"], r["nx2"], r["mb"], r["timeout"] = nx1, 2 * NX2, 128, 6000
+        r["info"] = r["info"] + " | doppelte Aufloesung (dx = 1.39e14 cm)"
+        runs[name + "_x2"] = r
     for run in runs.values():
         run["orbit"] = orbit(run["vx"], run["vy"])
         run["t_peri"] = round(run["orbit"]["t_peri_yr"], 2)
@@ -220,7 +232,8 @@ def preflight(name, run, dom, t_end):
     else:
         out.append((mm > 1e16, f"Keplerbahn bis {t_end:g} yr in der Domain, Abstand min. "
                                f"{mm / 1e16:.2f} e16 cm" + ("" if mm > 1e16 else " (knapp)")))
-    nb, nt = (run.get("nx1", NX1) // 64) * (NX2 // 64), run.get("ntasks", NTASKS)
+    mb = run.get("mb", 64)
+    nb, nt = (run.get("nx1", NX1) // mb) * (run.get("nx2", NX2) // mb), run.get("ntasks", NTASKS)
     out.append((nb % nt == 0, f"{nb} Meshblocks auf {nt} Prozesse ({nb / nt:g} pro Prozess)"))
     return out
 
@@ -265,8 +278,8 @@ def main():
                           capture_output=True, text=True).stdout.strip()
     for i in range(0, len(todo), args.bundle):
         group = todo[i:i + args.bundle]
-        parts = [f"( cd {d} && " + " && ".join(f"timeout {RUN_TIMEOUT} {x}" for x in c) + " )"
-                 for _, d, _, c in group]
+        parts = [f"( cd {d} && " + " && ".join(f"timeout {r.get('timeout', RUN_TIMEOUT)} {x}" for x in c) + " )"
+                 for _, d, r, c in group]
         wrap = f"module purge; module load {MODULES}; " + "; ".join(parts)
         jobname = f"{group[0][0]}+{len(group) - 1}" if len(group) > 1 else group[0][0]
         sb = ["sbatch", f"--partition={args.partition}", f"--time={args.time}", "--nodes=1",

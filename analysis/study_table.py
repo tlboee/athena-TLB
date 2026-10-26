@@ -33,20 +33,40 @@ FLAG  = 0.01      # Warnung, wenn > 1 % der Anfangs-Tracermasse die Box verlasse
 patterns = sys.argv[1:] or ["g_*", "ps_ref*"]
 
 
+RHO0, R_IN = 1.702e-21, 1.9e15          # Schartmann-Normierung bei 1e16 cm, Senkenradius
+DF = {"1": 1.0, "1/3": 1/3, "1/10": 0.1}  # Dichteschwellen (Scannapieco & Brueggen 2015: F_1, F_1/3, F_1/10)
+DCOLS = [f"dl_{k}" for k in DF] + [f"da_{k}" for k in DF]
+
+
 def mx_curve(run_dir):
-    """m_X(t) / m_tot(0) aus den Snapshots; Zwischenspeicher mX.csv."""
+    """m_X(t) / m_tot(0) aus den Snapshots; Zwischenspeicher mX.csv.
+
+    Tracer:  m_X        = Summe rho*tr ueber Zellen mit tr > X
+    Dichte:  dl_f (lokal)    = Summe rho*tr ueber Zellen mit rho/rho_eq(r) > f * chi0
+             da_f (absolut)  = Summe rho*tr ueber Zellen mit rho > f * rho_cl0   (wie SB15)
+    chi0 und rho_cl0: Median ueber die Zellen mit tr > 0.99 im ersten Snapshot.
+    """
     cache = os.path.join(run_dir, "mX.csv")
     nums = g2_io.snapshot_numbers(run_dir)
     if os.path.exists(cache):
         df = pd.read_csv(cache)
-        if len(df) == len(nums):
+        if len(df) == len(nums) and all(c in df.columns for c in DCOLS):
             return df
-    rows = []
+    rows, rho_eq, chi0, rho_cl0 = [], None, None, None
     for n in nums:
         t, g = g2_io.load_snapshot(run_dir, n)
-        m, tr = g["rho"] * g["r0"], g["r0"]
-        rows.append([t / YR, m.sum()] + [m[tr > x].sum() for x in XS])
-    df = pd.DataFrame(rows, columns=["t_yr", "m_tot"] + [f"m_{XN[x]}" for x in XS])
+        rho, tr = g["rho"], g["r0"]
+        if rho_eq is None:
+            X, Y = np.meshgrid(g["x"], g["y"])
+            rho_eq = RHO0 * 1e16 / np.maximum(np.hypot(X, Y), R_IN)
+            cl = tr > 0.99
+            rho_cl0, chi0 = np.median(rho[cl]), np.median((rho / rho_eq)[cl])
+            print(f"  {os.path.basename(run_dir)}: rho_cl0 = {rho_cl0:.3e} g/cm3, chi0 (lokal) = {chi0:.1f}")
+        m, contrast = rho * tr, rho / rho_eq
+        rows.append([t / YR, m.sum()] + [m[tr > x].sum() for x in XS]
+                    + [m[contrast > f * chi0].sum() for f in DF.values()]
+                    + [m[rho > f * rho_cl0].sum() for f in DF.values()])
+    df = pd.DataFrame(rows, columns=["t_yr", "m_tot"] + [f"m_{XN[x]}" for x in XS] + DCOLS)
     m0 = df["m_tot"].iloc[0]
     for c in df.columns[1:]:
         df[c] /= m0
@@ -126,6 +146,11 @@ for r in runs:
             for norm, f in variants:
                 tx = t_below(t, f, y)
                 rows.append(dict(base, X=XN[x], Y=YN[y], norm=norm, t=tx, t_rel=tx - tp))
+    for key in DCOLS:
+        f = df[key].to_numpy()
+        for y in YS:
+            tx = t_below(t, f, y)
+            rows.append(dict(base, X=key, Y=YN[y], norm="init", t=tx, t_rel=tx - tp))
 
 tab = pd.DataFrame(rows)
 tab.to_csv(os.path.join(BASE, "study_table.csv"), index=False)
@@ -145,19 +170,22 @@ print("\nZeiten in yr seit 1995.5; '>100' = bis Laufende nicht erreicht")
 print("t(1/3)    = t_1/3,1/3 bezogen auf m_tot(0);  t(1/3)rc = mit Randkorrektur (nur Diagnose,\n"
       "            unterschaetzt den Verlust bei duennem Gas); Rand = gesamter Randverlust")
 print("t(0.9)    = t_0.9,1/3 bezogen auf m_tot(0);  Rand! = t_flag liegt vor t(1/3) bzw. t(0.9)")
+print("dl_1/3    = t_50 mit rho/rho_eq(r) > chi0/3 (lokal);  da_1/3 = t_50 mit rho > rho_cl0/3 (SB15)")
 print(f"{'run':15s} {'chi':>6s} {'r_p':>8s} {'t_peri':>6s} {'t_cc0':>6s} {'Senke':>6s} {'Rand':>8s} "
-      f"{'t_flag':>7s} {'t(1/3)':>7s} {'t(1/3)rc':>8s} {'t(0.9)':>7s}  Warnung")
+      f"{'t_flag':>7s} {'t(1/3)':>7s} {'t(1/3)rc':>8s} {'t(0.9)':>7s} {'dl_1/3':>7s} {'da_1/3':>7s}  Warnung")
 for r in runs:
     n = r["name"]
     b = tab[tab["run"] == n].iloc[0]
     t13, t13c, t09 = pick(n, "1/3", "init"), pick(n, "1/3", "init_rc"), pick(n, "0.9", "init")
+    tdl, tda = pick(n, "dl_1/3", "init", Y="1/2"), pick(n, "da_1/3", "init", Y="1/2")
     fl = b["t_flag"]
     warn = ""
     if np.isfinite(fl) and ((not np.isfinite(t13)) or fl < t13 or (not np.isfinite(t09)) or fl < t09):
         warn = "Rand!"
     print(f"{n:15s} {b['chi']:6.0f} {b['rp']:8.1e} {b['t_peri']:6.1f} {b['t_cc0']:6.1f} "
           f"{b['sink_end']:6.3f} {b['buf_end']:8.3f} {fmt(fl, np.inf) if np.isfinite(fl) else '      -'} "
-          f"{fmt(t13, b['t_end'])} {fmt(t13c, b['t_end']):>8s} {fmt(t09, b['t_end'])}  {warn}")
+          f"{fmt(t13, b['t_end'])} {fmt(t13c, b['t_end']):>8s} {fmt(t09, b['t_end'])} "
+          f"{fmt(tdl, b['t_end'])} {fmt(tda, b['t_end'])}  {warn}")
 
 # --- Abbildung 1: m_X(t) fuer alle Laeufe ---------------------------------------------------
 n = len(runs)
@@ -171,7 +199,8 @@ for ax, r in zip(axes.flat, runs):
     ax.plot(tr, df["m_tot"], "k", lw=1.2)
     for x in XS:
         ax.plot(tr, df[f"m_{XN[x]}"], lw=1, label=f"X = {XN[x]}")
-    ax.plot(tr, df["m_1/3"] + corr["1/3"], "--", color="C1", lw=1, label="X = 1/3 + Rand")
+    ax.plot(tr, df["dl_1/3"], "k--", lw=1.4, label="rho/rho_eq > chi0/3")
+    ax.plot(tr, df["da_1/3"], "k:", lw=1.4, label="rho > rho_cl0/3 (SB15)")
     for y in YS:
         ax.axhline(y, color="grey", ls=":", lw=0.7)
     ax.axvline(0, color="grey", ls="--", lw=0.7)

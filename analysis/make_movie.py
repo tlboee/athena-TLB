@@ -20,6 +20,7 @@ p.add_argument("--zoom", default=None, help="x0,x1,y0,y1 in 1e16 cm")
 p.add_argument("--out", default=None, help="Dateiname ohne Endung")
 p.add_argument("--dpi", type=int, default=150)
 p.add_argument("--logtr", action="store_true", help="Tracer logarithmisch (1e-3 ... 1)")
+p.add_argument("--contrast", action="store_true", help="Dichte relativ zur Gleichgewichtsatmosphaere")
 a = p.parse_args()
 
 RUN     = os.path.expanduser(a.run)
@@ -71,9 +72,17 @@ dx, dy = g["x"][1] - g["x"][0], g["y"][1] - g["y"][0]
 ext = [(g["x"][0] - dx/2) / 1e16, (g["x"][-1] + dx/2) / 1e16,
        (g["y"][0] - dy/2) / 1e16, (g["y"][-1] + dy/2) / 1e16]
 orbit = kepler_orbit(g2_io.snapshot_time(RUN, nums[-1]))
+XX, YY = np.meshgrid(g["x"], g["y"])
+RHO_EQ = 1.702e-21 * 1e16 / np.maximum(np.hypot(XX, YY), 1.9e15)   # Schartmann-Normierung, konstant in r < r_in
+
+
+def rho_img(rho):
+    return rho / RHO_EQ if a.contrast else rho
+
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
-im0 = axes[0].imshow(g["rho"], origin="lower", extent=ext, norm=LogNorm(1e-23, 1e-17),
+im0 = axes[0].imshow(rho_img(g["rho"]), origin="lower", extent=ext,
+                     norm=LogNorm(0.3, 3e4) if a.contrast else LogNorm(1e-23, 1e-17),
                      cmap="viridis", interpolation="nearest")
 def tr_img(r0):
     return np.clip(r0, 1e-4, 1) if a.logtr else r0
@@ -93,14 +102,14 @@ for ax in axes:
         ax.set_xlim(x0, x1)
         ax.set_ylim(y0, y1)
 axes[0].set_ylabel(r"y [$10^{16}$ cm]")
-fig.colorbar(im0, ax=axes[0], label=r"$\rho$ [g/cm$^3$]", shrink=0.8)
+fig.colorbar(im0, ax=axes[0], label=(r"$\rho\,/\,\rho_{\rm eq}(r)$" if a.contrast else r"$\rho$ [g/cm$^3$]"), shrink=0.8)
 fig.colorbar(im1, ax=axes[1], label="Tracer r0", shrink=0.8)
 title = fig.suptitle("")
 
 
 def update(k):
     t, g = g2_io.load_snapshot(RUN, nums[k])
-    im0.set_data(g["rho"])
+    im0.set_data(rho_img(g["rho"]))
     im1.set_data(tr_img(g["r0"]))
     title.set_text(f"{LABEL}   t = {t / YR:5.1f} yr   ({T_START + t / YR:.1f})")
     if k % 10 == 0:

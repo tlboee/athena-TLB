@@ -4,7 +4,7 @@ Aufruf (JupyterHub-Notebook):
   %run ~/athena/analysis/make_movie.py <run_dir> [--fps 6] [--zoom=x0,x1,y0,y1] [--out name]
   --zoom in Einheiten von 1e16 cm, z.B. --zoom=-4,1.5,-2.5,3 (mit "=", weil der Wert mit "-" beginnt) fuer das Perizentrum
 """
-import argparse, os, shutil, sys
+import argparse, json, os, shutil, sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import animation
@@ -19,12 +19,17 @@ p.add_argument("--fps", type=float, default=6)
 p.add_argument("--zoom", default=None, help="x0,x1,y0,y1 in 1e16 cm")
 p.add_argument("--out", default=None, help="Dateiname ohne Endung")
 p.add_argument("--dpi", type=int, default=150)
+p.add_argument("--logtr", action="store_true", help="Tracer logarithmisch (1e-3 ... 1)")
 a = p.parse_args()
 
 RUN     = os.path.expanduser(a.run)
 YR      = g2_io.YR
 T_START = 1995.5
 nums    = g2_io.snapshot_numbers(RUN)
+MF      = os.path.join(RUN, "manifest.json")
+MAN     = json.load(open(MF)) if os.path.exists(MF) else None
+LABEL   = (MAN["name"] + ": " + MAN["info"].split(" |")[0]) if MAN else "CC01"
+VX, VY  = (MAN["vx_kms"], MAN["vy_kms"]) if MAN else (794.59, 48.45)
 print(f"{len(nums)} Snapshots in {RUN}")
 
 
@@ -32,7 +37,7 @@ def kepler_orbit(t_end, n=50000):
     """Ballistische Bahn aus Burkert+12 Tabelle 1 (Leapfrog-Integration)."""
     GM  = 6.674e-8 * 4.31e6 * 1.989e33
     pos = np.array([-7.22e16, 2.21e16])
-    vel = np.array([794.59e5, 48.45e5])
+    vel = np.array([VX * 1e5, VY * 1e5])
     dt  = t_end / n
     path = [pos.copy()]
     for _ in range(n):
@@ -70,7 +75,13 @@ orbit = kepler_orbit(g2_io.snapshot_time(RUN, nums[-1]))
 fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
 im0 = axes[0].imshow(g["rho"], origin="lower", extent=ext, norm=LogNorm(1e-23, 1e-17),
                      cmap="viridis", interpolation="nearest")
-im1 = axes[1].imshow(g["r0"], origin="lower", extent=ext, vmin=0, vmax=1,
+def tr_img(r0):
+    return np.clip(r0, 1e-4, 1) if a.logtr else r0
+
+
+im1 = axes[1].imshow(tr_img(g["r0"]), origin="lower", extent=ext,
+                     norm=LogNorm(1e-3, 1) if a.logtr else None,
+                     vmin=None if a.logtr else 0, vmax=None if a.logtr else 1,
                      cmap="magma", interpolation="nearest")
 for ax in axes:
     ax.plot(orbit[:, 0], orbit[:, 1], "w--", lw=0.7)
@@ -90,8 +101,8 @@ title = fig.suptitle("")
 def update(k):
     t, g = g2_io.load_snapshot(RUN, nums[k])
     im0.set_data(g["rho"])
-    im1.set_data(g["r0"])
-    title.set_text(f"CC01   t = {t / YR:5.1f} yr   ({T_START + t / YR:.1f})")
+    im1.set_data(tr_img(g["r0"]))
+    title.set_text(f"{LABEL}   t = {t / YR:5.1f} yr   ({T_START + t / YR:.1f})")
     if k % 10 == 0:
         print(f"  Bild {k + 1}/{len(nums)}")
     return im0, im1, title

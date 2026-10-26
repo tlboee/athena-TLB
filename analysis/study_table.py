@@ -28,7 +28,7 @@ XS    = [0.1, 1/3, 0.5, 0.9, 0.99, 0.9999]
 XN    = {0.1: "0.1", 1/3: "1/3", 0.5: "0.5", 0.9: "0.9", 0.99: "0.99", 0.9999: "0.9999"}
 YS    = [0.5, 1/3, 0.1]
 YN    = {0.5: "1/2", 1/3: "1/3", 0.1: "1/10"}
-FLAG  = 0.01      # Warnung, wenn > 1 % der Anfangsmasse mit Tracer > 1/3 die Box verlassen hat
+FLAG  = 0.01      # Warnung, wenn > 1 % der Anfangs-Tracermasse die Box verlassen hat (Gesamtzaehler)
 
 patterns = sys.argv[1:] or ["g_*", "ps_ref*"]
 
@@ -85,7 +85,9 @@ def boundary(run_dir):
 # --- Laeufe einlesen ---------------------------------------------------------------------
 runs = []
 for d in sorted(os.listdir(BASE)):
-    if not any(fnmatch.fnmatch(d, p) for p in patterns):
+    if not any(fnmatch.fnmatch(d, p) for p in patterns if not p.startswith("!")):
+        continue
+    if any(fnmatch.fnmatch(d, p[1:]) for p in patterns if p.startswith("!")):
         continue
     mf = os.path.join(BASE, d, "manifest.json")
     if not os.path.exists(mf) or not g2_io.snapshot_numbers(os.path.join(BASE, d)):
@@ -108,7 +110,7 @@ for r in runs:
     curves[r["name"]] = (df, corr)
     v = math.hypot(r["vx_kms"], r["vy_kms"]) * 1e5
     t_cc = math.sqrt(r["chi_eff"]) * R_C / v / YR
-    flag = bd.loc[bd["buf_1/3"] > FLAG, "t_yr"]
+    flag = bd.loc[bd["buf"] > FLAG, "t_yr"]
     base = {"run": r["name"], "chi": r["chi_eff"], "rp": r["rp_eff"], "t_peri": tp,
             "t_end": t[-1], "t_cc0": t_cc, "t_KH0": t_cc / (2 * math.pi),
             "t_tid_peri": math.sqrt(r["rp_eff"] ** 3 / GM) / YR,
@@ -140,9 +142,10 @@ def fmt(v, t_end):
 
 
 print("\nZeiten in yr seit 1995.5; '>100' = bis Laufende nicht erreicht")
-print("t(1/3)    = t_1/3,1/3 bezogen auf m_tot(0);  t(1/3)rc = dasselbe, Randverlust korrigiert")
+print("t(1/3)    = t_1/3,1/3 bezogen auf m_tot(0);  t(1/3)rc = mit Randkorrektur (nur Diagnose,\n"
+      "            unterschaetzt den Verlust bei duennem Gas); Rand = gesamter Randverlust")
 print("t(0.9)    = t_0.9,1/3 bezogen auf m_tot(0);  Rand! = t_flag liegt vor t(1/3) bzw. t(0.9)")
-print(f"{'run':15s} {'chi':>6s} {'r_p':>8s} {'t_peri':>6s} {'t_cc0':>6s} {'Senke':>6s} {'Rand>1/3':>8s} "
+print(f"{'run':15s} {'chi':>6s} {'r_p':>8s} {'t_peri':>6s} {'t_cc0':>6s} {'Senke':>6s} {'Rand':>8s} "
       f"{'t_flag':>7s} {'t(1/3)':>7s} {'t(1/3)rc':>8s} {'t(0.9)':>7s}  Warnung")
 for r in runs:
     n = r["name"]
@@ -153,7 +156,7 @@ for r in runs:
     if np.isfinite(fl) and ((not np.isfinite(t13)) or fl < t13 or (not np.isfinite(t09)) or fl < t09):
         warn = "Rand!"
     print(f"{n:15s} {b['chi']:6.0f} {b['rp']:8.1e} {b['t_peri']:6.1f} {b['t_cc0']:6.1f} "
-          f"{b['sink_end']:6.3f} {b['buf13_end']:8.3f} {fmt(fl, np.inf) if np.isfinite(fl) else '      -'} "
+          f"{b['sink_end']:6.3f} {b['buf_end']:8.3f} {fmt(fl, np.inf) if np.isfinite(fl) else '      -'} "
           f"{fmt(t13, b['t_end'])} {fmt(t13c, b['t_end']):>8s} {fmt(t09, b['t_end'])}  {warn}")
 
 # --- Abbildung 1: m_X(t) fuer alle Laeufe ---------------------------------------------------
@@ -185,7 +188,7 @@ out1 = os.path.join(BASE, "study_mX.png")
 fig.savefig(out1, dpi=130)
 
 # --- Abbildung 2: t_1/3,1/3 (randkorrigiert) gegen chi und r_p ------------------------------
-g = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init_rc")].copy()
+g = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init")].copy()
 lo = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init")].set_index("run")["t"]
 g["t_lo"] = g["run"].map(lo)        # unkorrigiert = untere Grenze
 grid = g[g["run"].str.startswith("g_")]
@@ -226,7 +229,7 @@ ax.set_xlabel("r_p [cm]")
 for ax in axes:
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_ylabel("t_1/3,1/3 [yr seit 1995.5]\nPunkt: Rand korrigiert, Strich: unkorrigiert")
+    ax.set_ylabel("t_1/3,1/3 [yr seit 1995.5]")
     ax.legend(fontsize=7, title="offene Dreiecke: bis 100 yr nicht erreicht", title_fontsize=7)
 out2 = os.path.join(BASE, "study_tXY.png")
 fig.savefig(out2, dpi=150)

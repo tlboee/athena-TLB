@@ -31,6 +31,7 @@ MF      = os.path.join(RUN, "manifest.json")
 MAN     = json.load(open(MF)) if os.path.exists(MF) else None
 LABEL   = (MAN["name"] + ": " + MAN["info"].split(" |")[0]) if MAN else "CC01"
 VX, VY  = (MAN["vx_kms"], MAN["vy_kms"]) if MAN else (794.59, 48.45)
+CHI     = (MAN["chi"] or 2755.0) if MAN else 2755.0       # Baseline: Tabellendichte
 print(f"{len(nums)} Snapshots in {RUN}")
 
 
@@ -82,7 +83,7 @@ def rho_img(rho):
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 5), constrained_layout=True)
 im0 = axes[0].imshow(rho_img(g["rho"]), origin="lower", extent=ext,
-                     norm=LogNorm(0.3, 3e4) if a.contrast else LogNorm(1e-23, 1e-17),
+                     norm=LogNorm(1, 3 * CHI) if a.contrast else LogNorm(1e-23, 1e-17),
                      cmap="viridis", interpolation="nearest")
 def tr_img(r0):
     return np.clip(r0, 1e-4, 1) if a.logtr else r0

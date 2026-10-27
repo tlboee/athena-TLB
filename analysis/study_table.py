@@ -34,8 +34,9 @@ patterns = sys.argv[1:] or ["g_*", "ps_ref*"]
 
 
 RHO0, R_IN = 1.702e-21, 1.9e15          # Schartmann-Normierung bei 1e16 cm, Senkenradius
+GAM = 5/3
 DF = {"1": 1.0, "1/3": 1/3, "1/10": 0.1}  # Dichteschwellen (Scannapieco & Brueggen 2015: F_1, F_1/3, F_1/10)
-DCOLS = [f"dl_{k}" for k in DF] + [f"da_{k}" for k in DF]
+DCOLS = [f"dl_{k}" for k in DF] + [f"da_{k}" for k in DF] + [f"ek_{k}" for k in DF]
 
 
 def mx_curve(run_dir):
@@ -61,11 +62,13 @@ def mx_curve(run_dir):
             rho_eq = RHO0 * 1e16 / np.maximum(np.hypot(X, Y), R_IN)
             cl = tr > 0.99
             rho_cl0, chi0 = np.median(rho[cl]), np.median((rho / rho_eq)[cl])
+            K0 = np.median((g["press"] / rho**GAM)[cl])
             print(f"  {os.path.basename(run_dir)}: rho_cl0 = {rho_cl0:.3e} g/cm3, chi0 (lokal) = {chi0:.1f}")
         m, contrast = rho * tr, rho / rho_eq
         rows.append([t / YR, m.sum()] + [m[tr > x].sum() for x in XS]
                     + [m[contrast > f * chi0].sum() for f in DF.values()]
-                    + [m[rho > f * rho_cl0].sum() for f in DF.values()])
+                    + [m[rho > f * rho_cl0].sum() for f in DF.values()]
+                    + [m[g["press"] / rho**GAM < f**(-GAM) * K0].sum() for f in DF.values()])
     df = pd.DataFrame(rows, columns=["t_yr", "m_tot"] + [f"m_{XN[x]}" for x in XS] + DCOLS)
     m0 = df["m_tot"].iloc[0]
     for c in df.columns[1:]:
@@ -187,6 +190,23 @@ for r in runs:
           f"{fmt(t13, b['t_end'])} {fmt(t13c, b['t_end']):>8s} {fmt(t09, b['t_end'])} "
           f"{fmt(tdl, b['t_end'])} {fmt(tda, b['t_end'])}  {warn}")
 
+# --- Vergleich 512 <-> doppelte Aufloesung ----------------------------------------------
+pairs = [(r["name"].replace("_x2_t30", ""), r["name"]) for r in runs if r["name"].endswith("_x2_t30")]
+if pairs:
+    names = set(r["name"] for r in runs)
+    meas = [("0.9", "Tracer>0.9"), ("1/3", "Tracer>1/3"), ("da_1/3", "rho>rho0/3"), ("ek_1/3", "K<3^g K0")]
+    print("\nVergleich t_50 [yr seit 1995.5]: 512 -> doppelte Aufloesung (Strich = nicht erreicht; x2 bis 30 yr)")
+    print(f"{'run':18s} " + " ".join(f"{lab:>17s}" for _, lab in meas))
+    for lo, hi in pairs:
+        cells = []
+        for key, _ in meas:
+            a = pick(lo, key, "init", Y="1/2") if lo in names else np.nan
+            b = pick(hi, key, "init", Y="1/2")
+            fa = f"{a:6.1f}" if np.isfinite(a) else "     -"
+            fb = f"{b:6.1f}" if np.isfinite(b) else "     -"
+            cells.append(f"{fa} -> {fb}")
+        print(f"{lo:18s} " + " ".join(f"{c:>17s}" for c in cells))
+
 # --- Abbildung 1: m_X(t) fuer alle Laeufe ---------------------------------------------------
 n = len(runs)
 nc = min(4, n)
@@ -201,6 +221,7 @@ for ax, r in zip(axes.flat, runs):
         ax.plot(tr, df[f"m_{XN[x]}"], lw=1, label=f"X = {XN[x]}")
     ax.plot(tr, df["dl_1/3"], "k--", lw=1.4, label="rho/rho_eq > chi0/3")
     ax.plot(tr, df["da_1/3"], "k:", lw=1.4, label="rho > rho_cl0/3 (SB15)")
+    ax.plot(tr, df["ek_1/3"], color="m", ls="-.", lw=1.4, label="K < 3^gamma K0")
     for y in YS:
         ax.axhline(y, color="grey", ls=":", lw=0.7)
     ax.axvline(0, color="grey", ls="--", lw=0.7)

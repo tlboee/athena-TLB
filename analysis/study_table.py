@@ -38,8 +38,14 @@ GAM = 5/3
 DF = {"1": 1.0, "1/3": 1/3, "1/10": 0.1}  # Dichteschwellen (Scannapieco & Brueggen 2015: F_1, F_1/3, F_1/10)
 DCOLS = [f"dl_{k}" for k in DF] + [f"da_{k}" for k in DF] + [f"ek_{k}" for k in DF]
 DX = {"10": 10.0, "30": 30.0}      # feste Schwellen rho/rho_eq(r) > DX (dichter Strom)
-DCOLS += [f"dx_{k}" for k in DX]
+DCOLS += [f"dx_{k}" for k in DX] + ["ds"]   # ds: dichter Strom, rho/rho_eq > min(10, chi0/3)
 TRAJ = ["xc", "yc", "vxc", "vyc", "chic"]   # Schwerpunkt, Geschwindigkeit, lokaler Kontrast (tr > 0.5)
+
+
+def chi_run(run_dir):
+    with open(os.path.join(run_dir, "manifest.json")) as f:
+        c = json.load(f).get("chi")
+    return c if c else 2755.0
 
 
 def traj(g, m, tr, contrast, X, Y):
@@ -67,6 +73,11 @@ def mx_curve(run_dir):
         df = pd.read_csv(cache)
         if len(df) == len(nums) and all(c in df.columns for c in DCOLS + TRAJ):
             return df
+        if (len(df) == len(nums) and "ds" not in df.columns and "dx_10" in df.columns
+                and chi_run(run_dir) >= 30):
+            df["ds"] = df["dx_10"]          # min(10, chi0/3) = 10 fuer chi0 >= 30
+            df.to_csv(cache, index=False)
+            return df
     rows, rho_eq, chi0, rho_cl0 = [], None, None, None
     for n in nums:
         t, g = g2_io.load_snapshot(run_dir, n)
@@ -84,6 +95,7 @@ def mx_curve(run_dir):
                     + [m[rho > f * rho_cl0].sum() for f in DF.values()]
                     + [m[g["press"] / rho**GAM < f**(-GAM) * K0].sum() for f in DF.values()]
                     + [m[contrast > c].sum() for c in DX.values()]
+                    + [m[contrast > min(10.0, chi0 / 3)].sum()]
                     + traj(g, m, tr, contrast, X, Y))
     df = pd.DataFrame(rows, columns=["t_yr", "m_tot"] + [f"m_{XN[x]}" for x in XS] + DCOLS + TRAJ)
     m0 = df["m_tot"].iloc[0]
@@ -212,7 +224,7 @@ pairs = [(r["name"].replace("_x2_t30", ""), r["name"]) for r in runs if r["name"
 if pairs:
     names = set(r["name"] for r in runs)
     meas = [("0.9", "Tracer>0.9"), ("1/3", "Tracer>1/3"), ("da_1/3", "rho>rho0/3"), ("ek_1/3", "K<3^g K0"),
-            ("dx_10", "rho/rho_eq>10")]
+            ("ds", "dichter Strom")]
     print("\nVergleich t_50 [yr seit 1995.5]: 512 -> doppelte Aufloesung (Strich = nicht erreicht; x2 bis 30 yr)")
     print(f"{'run':18s} " + " ".join(f"{lab:>17s}" for _, lab in meas))
     for lo, hi in pairs:
@@ -240,7 +252,7 @@ for ax, r in zip(axes.flat, runs):
     ax.plot(tr, df["dl_1/3"], "k--", lw=1.4, label="rho/rho_eq > chi0/3")
     ax.plot(tr, df["da_1/3"], "k:", lw=1.4, label="rho > rho_cl0/3 (SB15)")
     ax.plot(tr, df["ek_1/3"], color="m", ls="-.", lw=1.4, label="K < 3^gamma K0")
-    ax.plot(tr, df["dx_10"], color="c", lw=1.4, label="rho/rho_eq > 10")
+    ax.plot(tr, df["ds"], color="c", lw=1.4, label="rho/rho_eq > min(10, chi0/3)")
     for y in YS:
         ax.axhline(y, color="grey", ls=":", lw=0.7)
     ax.axvline(0, color="grey", ls="--", lw=0.7)
@@ -256,50 +268,43 @@ for ax in list(axes.flat)[n:]:
 out1 = os.path.join(BASE, "study_mX.png")
 fig.savefig(out1, dpi=130)
 
-# --- Abbildung 2: t_1/3,1/3 (randkorrigiert) gegen chi und r_p ------------------------------
-g = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init")].copy()
-lo = tab[(tab["X"] == "1/3") & (tab["Y"] == "1/3") & (tab["norm"] == "init")].set_index("run")["t"]
-g["t_lo"] = g["run"].map(lo)        # unkorrigiert = untere Grenze
-grid = g[g["run"].str.startswith("g_")]
-ref = g[g["run"].str.startswith("ps_ref")]
-fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), constrained_layout=True)
-
-ax = axes[0]
-for k, (rp, sub) in enumerate(grid.groupby("rp")):
-    sub = sub.sort_values("chi")
-    ok = np.isfinite(sub["t"]).to_numpy()
-    ax.plot(sub["chi"][ok], sub["t"][ok], "o-", color=f"C{k}", label=f"r_p = {rp:.1e} cm")
-    ax.plot(sub["chi"][~ok], sub["t_end"][~ok], "^", color=f"C{k}", mfc="none", ms=9)
-    for xv, a, b in zip(sub["chi"], sub["t_lo"], sub["t"].fillna(sub["t_end"])):
-        if np.isfinite(a) and a < b:
-            ax.plot([xv, xv], [a, b], color=f"C{k}", lw=1)
-            ax.plot(xv, a, "_", color=f"C{k}", ms=10)
+# --- Abbildung 2: t_50 gegen chi und r_p fuer drei Masse; 512 gefuellt, doppelte Aufloesung leer ---
+FIG_MEAS = [("0.9", "Tracer > 0.9 (Mischung)"),
+            ("ds", "dichter Strom: rho/rho_eq > min(10, chi0/3)"),
+            ("ek_1/3", "Entropie: K < 3^gamma K0")]
+gr = tab[tab["run"].str.startswith("g_") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
+gr["x2"] = gr["run"].str.contains("_x2")
+fig, axes = plt.subplots(len(FIG_MEAS), 2, figsize=(12, 3.8 * len(FIG_MEAS)), squeeze=False,
+                         constrained_layout=True)
 chis = np.logspace(1, 4, 50)
-ax.plot(chis, np.sqrt(chis) * R_C / V0 / YR, "k--", lw=1, label="t_cc (Start, CC01-Bahn)")
-ax.axhspan(18.0, 21.4, color="grey", alpha=0.15, label="Perizentrum")
-ax.plot(ref["chi"], ref["t"], "kx", ms=8, label="CC01-Kontrollen")
-ax.set_xlabel("chi")
-
-ax = axes[1]
-for k, (chi, sub) in enumerate(grid.groupby("chi")):
-    sub = sub.sort_values("rp")
-    ok = np.isfinite(sub["t"]).to_numpy()
-    ax.plot(sub["rp"][ok], sub["t"][ok], "o-", color=f"C{k}", label=f"chi = {chi:g}")
-    ax.plot(sub["rp"][~ok], sub["t_end"][~ok], "^", color=f"C{k}", mfc="none", ms=9)
-    for xv, a, b in zip(sub["rp"], sub["t_lo"], sub["t"].fillna(sub["t_end"])):
-        if np.isfinite(a) and a < b:
-            ax.plot([xv, xv], [a, b], color=f"C{k}", lw=1)
-            ax.plot(xv, a, "_", color=f"C{k}", ms=10)
-peri = grid.drop_duplicates("rp").sort_values("rp")
-ax.plot(peri["rp"], peri["t_peri"], "k--", lw=1, label="Perizentrum")
-ax.plot(peri["rp"], peri["t_peri"] + peri["t_tid_peri"], "k:", lw=1, label="Perizentrum + t_tid")
-ax.set_xlabel("r_p [cm]")
-
-for ax in axes:
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_ylabel("t_1/3,1/3 [yr seit 1995.5]")
-    ax.legend(fontsize=7, title="offene Dreiecke: bis 100 yr nicht erreicht", title_fontsize=7)
+for row, (key, title) in enumerate(FIG_MEAS):
+    g = gr[gr["X"] == key]
+    for col, (xvar, grp) in enumerate([("chi", "rp"), ("rp", "chi")]):
+        ax = axes[row, col]
+        for k, (gv, sub) in enumerate(g[~g["x2"]].groupby(grp)):
+            c = f"C{k}"
+            sub = sub.sort_values(xvar)
+            ok = np.isfinite(sub["t"]).to_numpy()
+            lab = f"r_p = {gv:.1e} cm" if grp == "rp" else f"chi = {gv:g}"
+            ax.plot(sub[xvar][ok], sub["t"][ok], "o-", color=c, label=lab)
+            ax.plot(sub[xvar][~ok], sub["t_end"][~ok], "^", color=c, mfc="none", ms=9)
+            hi = g[g["x2"] & (g[grp] == gv)]
+            okh = np.isfinite(hi["t"]).to_numpy()
+            ax.plot(hi[xvar][okh], hi["t"][okh], "s", color=c, mfc="none", ms=8)
+        ax.axhspan(18.0, 21.4, color="grey", alpha=0.15)
+        if xvar == "chi":
+            ax.plot(chis, np.sqrt(chis) * R_C / V0 / YR, "k--", lw=1, label="t_cc (Start)")
+            ax.set_xlabel("chi")
+        else:
+            peri = g.drop_duplicates("rp").sort_values("rp")
+            ax.plot(peri["rp"], peri["t_peri"] + peri["t_tid_peri"], "k:", lw=1, label="Perizentrum + t_tid")
+            ax.set_xlabel("r_p [cm]")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_ylabel("t_50 [yr seit 1995.5]")
+        ax.set_title(title, fontsize=10)
+        ax.legend(fontsize=6, title="Kreis: 512, Quadrat: doppelt, Dreieck: nicht erreicht, grau: Perizentrum",
+                  title_fontsize=6)
 out2 = os.path.join(BASE, "study_tXY.png")
 fig.savefig(out2, dpi=150)
 print("Gespeichert:", out1, out2)

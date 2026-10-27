@@ -28,6 +28,7 @@
 //   N_rep_rho, N_rep_v, N_rep_T : Zahl der Reparaturen (Zelle x RK-Stufe) bei rho < rho_min_frac
 //            rho_eq, |v| > v_max bzw. T > T_max; dM_rep: dabei hinzugefuegte Masse [g];
 //            dE_rep: dabei entfernte Energie [erg] (positiv = entfernt)
+//   dE_cool  : durch Strahlungskuehlung abgegebene Energie [erg] (nur mit problem/cooling)
 //   Die Zaehler summieren ueber alle RK-Stufen und ueberzaehlen daher um einen fuer alle
 //   Kanaele gleichen Faktor; die exakte Gesamtabnahme steht in der Spalte "0-scalar".
 //   Aufteilung: Anteil eines Kanals = Zaehler / Summe der Zaehler.
@@ -37,6 +38,7 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 
@@ -49,6 +51,7 @@
 #include "../mesh/mesh.hpp"
 #include "../parameter_input.hpp"
 #include "../scalars/scalars.hpp"
+#include "../utils/townsend_cooling.hpp"   // Max Gronke, Townsend (2009)
 
 namespace {
 
@@ -62,15 +65,23 @@ constexpr Real km    = 1.0e5;
 // Indizes der Zaehler in ruser_meshblock_data[0]
 enum {CNT_SINK = 0, CNT_BUFFER = 1, CNT_RESET = 2, CNT_BUF_THIRD = 3, CNT_BUF_HALF = 4,
       CNT_REP_RHO = 5, CNT_REP_V = 6, CNT_REP_T = 7, CNT_REP_DM = 8, CNT_REP_DE = 9,
-      N_CNT = 10};
+      CNT_COOL = 10, N_CNT = 11};
 
 // Globale Parameter (in InitUserMeshData gesetzt)
 Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g, T_floor_g;
 Real rho_min_frac_g, v_max_g, T_max_g;   // Robustheit (Reparatur unphysikalischer Zellen)
 Real x1min_g, x1max_g, x2min_g, x2max_g, buf_g;
+bool cooling_g, test_cool_g;                // Kuehlung an/aus; Testmodus ohne Schwarzes Loch
+Real Lambda_fac_g, rho_amb_g, T_amb_g;      // Kuehlstaerke; gleichfoermige Umgebung im Test
+std::unique_ptr<Cooling> cooler_g;
 
 // Gleichgewichtsprofil; innerhalb r_in konstant (ausgeschnittener Bereich)
 void Equilibrium(Real r, Real &rho, Real &P) {
+  if (test_cool_g) {                          // Kuehltest: gleichfoermige Umgebung
+    rho = rho_amb_g;
+    P = rho_amb_g * k_B * T_amb_g / (mu_g * m_H);
+    return;
+  }
   const Real rr = std::max(r, r_in_g);
   rho = rho0_g * r0_g / rr;
   const Real T = T0_g * r0_g / rr;
@@ -106,6 +117,7 @@ Real HistRepV(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](
 Real HistRepT(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](CNT_REP_T); }
 Real HistRepDM(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_REP_DM); }
 Real HistRepDE(MeshBlock *pmb, int iout)  { return pmb->ruser_meshblock_data[0](CNT_REP_DE); }
+Real HistCool(MeshBlock *pmb, int iout)   { return pmb->ruser_meshblock_data[0](CNT_COOL); }
 
 }  // namespace
 
@@ -138,6 +150,18 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   // T0 <= 0: exakt hydrostatisch, aus k_B T r / (mu m_H) = G M / 2
   if (T0_g <= 0.0) T0_g = mu_g * m_H * GM_g / (2.0 * k_B * r0_g);
 
+  // Kuehlung (Townsend 2009, Implementierung von Max Gronke) und Kuehltest
+  cooling_g    = pin->GetOrAddBoolean("problem", "cooling", false);
+  Lambda_fac_g = pin->GetOrAddReal("problem", "Lambda_fac", 1.0);
+  test_cool_g  = pin->GetOrAddBoolean("problem", "test_cool", false);
+  rho_amb_g    = pin->GetOrAddReal("problem", "rho_amb", 1.0e-22);
+  T_amb_g      = pin->GetOrAddReal("problem", "T_amb", 1.0e7);
+  if (cooling_g) cooler_g.reset(new Cooling());
+  if (test_cool_g) {                // kein Schwarzes Loch, keine Senke
+    GM_g = 0.0;
+    r_in_g = 0.0;
+  }
+
   // Pufferzone am Rand: edge_buffer Zellen breit
   x1min_g = mesh_size.x1min;
   x1max_g = mesh_size.x1max;
@@ -161,6 +185,7 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   EnrollUserHistoryOutput(CNT_REP_T,   HistRepT,   "N_rep_T");
   EnrollUserHistoryOutput(CNT_REP_DM,  HistRepDM,  "dM_rep");
   EnrollUserHistoryOutput(CNT_REP_DE,  HistRepDE,  "dE_rep");
+  EnrollUserHistoryOutput(CNT_COOL,    HistCool,   "dE_cool");
 
   if (Globals::my_rank == 0) {
     std::cout << "[g2_cartesian] mu = " << mu_g << ", T0 = " << T0_g << " K"
@@ -169,6 +194,9 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
               << std::endl;
     std::cout << "[g2_cartesian] Reparatur: rho_min_frac = " << rho_min_frac_g
               << ", v_max = " << v_max_g << " cm/s, T_max = " << T_max_g << " K" << std::endl;
+    std::cout << "[g2_cartesian] Kuehlung: " << (cooling_g ? "an" : "aus")
+              << ", Lambda_fac = " << Lambda_fac_g
+              << (test_cool_g ? ", TESTMODUS (kein BH, gleichfoermige Umgebung)" : "") << std::endl;
   }
 }
 
@@ -329,6 +357,20 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
           ResetCell(cons, cons_scalar, k, j, i, r, gm1, tr);
           cnt(CNT_RESET) += s_old - cons_scalar(0, k, j, i) * vol;
           continue;
+        }
+
+        // 3b. Strahlungskuehlung fuer Wolken-/Mischgas (Townsend 2009, Max' Implementierung).
+        //     Abgestrahlte Energie in CNT_COOL (positiv; summiert ueber RK-Stufen).
+        if (cooling_g) {
+          const Real ekin_c = 0.5 * (SQR(cons(IM1, k, j, i)) + SQR(cons(IM2, k, j, i))
+                                     + SQR(cons(IM3, k, j, i))) / rho;
+          const Real T = (cons(IEN, k, j, i) - ekin_c) * gm1 * mu_g * m_H / (rho * k_B);
+          if (std::isfinite(T) && T > T_floor_g) {
+            const Real T_new = std::max(cooler_g->townsend(T, rho, dt, Lambda_fac_g), T_floor_g);
+            const Real de = (T_new - T) * rho * k_B / (mu_g * m_H * gm1);
+            cons(IEN, k, j, i) += de;
+            cnt(CNT_COOL) -= de * vol;
+          }
         }
 
         // 4. Temperaturboden fuer Wolken-/Mischgas

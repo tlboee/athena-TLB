@@ -19,7 +19,8 @@ GM = 6.674e-8 * 4.31e6 * 1.989e33
 X0, Y0 = -7.22e16, 2.21e16
 R_START = math.hypot(X0, Y0)
 R_C = 1.87e15
-MEAS = [("0.9", "Tracer > 0.9"), ("1/3", "Tracer > 1/3"), ("da_1/3", "rho > rho0/3"), ("ek_1/3", "K < 3^g K0")]
+MEAS = [("0.9", "Tracer > 0.9"), ("1/3", "Tracer > 1/3"), ("da_1/3", "rho > rho0/3"), ("ek_1/3", "K < 3^g K0"),
+        ("dx_10", "rho/rho_eq > 10")]
 
 
 def kepler_rv(vx, vy, t_yr):
@@ -40,13 +41,39 @@ def kepler_rv(vx, vy, t_yr):
     return r, np.sqrt(GM * (2 / r - 1 / a))
 
 
-def n_curves(man, chi0, t_end):
+def n_curves(man, chi0, t_end, run_dir, t_peri):
+    """N-Kurven: Keplerbahn bis zur Abweichung der Wolke, danach Bahn aus den Snapshots.
+
+    Abweichung: |r - r_Kepler| / r_Kepler > 0.2 oder |v - v_Kepler| / v_Kepler > 0.2 (Schwerpunkt der Wolke).
+    Liegt der Wechsel innerhalb von 1 yr um das Perizentrum (Umwicklung), wird er auf t_peri + 1 yr gelegt.
+    chi: gemessener lokaler Kontrast (Median rho/rho_eq ueber tr > 0.5), sonst chi0 r_Start / r.
+    """
     t = np.linspace(0.0, t_end, int(t_end / 0.005) + 1)
     r, v = kepler_rv(man["vx_kms"], man["vy_kms"], t)
-    tcc = np.sqrt(chi0 * R_START / r) * R_C / v / YR
+    chi = chi0 * R_START / r
+    t_sw = np.nan
+    mx = pd.read_csv(os.path.join(run_dir, "mX.csv"))
+    if "xc" in mx.columns:
+        ok = np.isfinite(mx["xc"]).to_numpy()
+        ts = mx["t_yr"].to_numpy()[ok]
+        rs = np.hypot(mx["xc"], mx["yc"]).to_numpy()[ok]
+        vs = np.hypot(mx["vxc"], mx["vyc"]).to_numpy()[ok]
+        cs = mx["chic"].to_numpy()[ok]
+        rk, vk = kepler_rv(man["vx_kms"], man["vy_kms"], ts)
+        dev = (np.abs(rs - rk) / rk > 0.2) | (np.abs(vs - vk) / vk > 0.2)
+        if dev.any():
+            t_sw = ts[np.argmax(dev)]
+            if abs(t_sw - t_peri) <= 1.0:
+                t_sw = t_peri + 1.0
+            late = t >= t_sw
+            r[late] = np.interp(t[late], ts, rs)
+            v[late] = np.interp(t[late], ts, vs)
+        chi = np.interp(t, ts, cs)
+    with np.errstate(divide="ignore"):
+        tcc = np.sqrt(chi) * R_C / v / YR
     ttid = np.sqrt(r**3 / GM) / YR
     cum = lambda tx: np.concatenate([[0.0], np.cumsum(0.5 * (1 / tx[1:] + 1 / tx[:-1]) * np.diff(t))])
-    return t, cum(tcc), cum(tcc / (2 * np.pi)), cum(ttid), r
+    return t, cum(tcc), cum(tcc / (2 * np.pi)), cum(ttid), r, t_sw
 
 
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
@@ -55,12 +82,13 @@ for run, sub in tab.groupby("run"):
     with open(os.path.join(BASE, run, "manifest.json")) as f:
         man = json.load(f)
     chi0, t_end = sub["chi"].iloc[0], sub["t_end"].iloc[0]
-    t, Ncc, Nkh, Ntid, r = n_curves(man, chi0, t_end)
+    t, Ncc, Nkh, Ntid, r, t_sw = n_curves(man, chi0, t_end, os.path.join(BASE, run), sub["t_peri"].iloc[0])
     for key, label in MEAS:
         s = sub[(sub["X"] == key) & (sub["Y"] == "1/2") & (sub["norm"] == "init")]["t"]
         td = s.iloc[0] if len(s) else np.nan
         row = {"run": run, "chi": chi0, "rp": sub["rp"].iloc[0], "t_peri": sub["t_peri"].iloc[0],
-               "x2": run.endswith("_x2_t30"), "grid": run.startswith("g_"), "measure": label, "t_d": td}
+               "x2": run.endswith("_x2_t30"), "grid": run.startswith("g_"), "measure": label, "t_d": td,
+               "t_sw": t_sw}
         if np.isfinite(td):
             row.update(N_cc=np.interp(td, t, Ncc), N_KH=np.interp(td, t, Nkh),
                        N_tid=np.interp(td, t, Ntid), r_d=np.interp(td, t, r))
@@ -72,7 +100,7 @@ pd.set_option("display.width", 200)
 for label in [m[1] for m in MEAS]:
     sub = nv[(nv["measure"] == label)].sort_values(["x2", "chi", "rp"])
     print(f"\n=== {label}: t_50 [yr seit 1995.5] und N-Werte zu diesem Zeitpunkt (NaN = nicht erreicht)")
-    print(sub[["run", "t_d", "N_cc", "N_KH", "N_tid", "r_d"]].round(3).to_string(index=False))
+    print(sub[["run", "t_sw", "t_d", "N_cc", "N_KH", "N_tid", "r_d"]].round(3).to_string(index=False))
 
 print("\nStreuung ueber die Gitterlaeufe (std von log10, in dex; kleiner = ordnet besser).")
 print("Nur Laeufe, in denen das Mass erreicht wurde; t_d zum Vergleich.")

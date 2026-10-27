@@ -37,6 +37,20 @@ RHO0, R_IN = 1.702e-21, 1.9e15          # Schartmann-Normierung bei 1e16 cm, Sen
 GAM = 5/3
 DF = {"1": 1.0, "1/3": 1/3, "1/10": 0.1}  # Dichteschwellen (Scannapieco & Brueggen 2015: F_1, F_1/3, F_1/10)
 DCOLS = [f"dl_{k}" for k in DF] + [f"da_{k}" for k in DF] + [f"ek_{k}" for k in DF]
+DX = {"10": 10.0, "30": 30.0}      # feste Schwellen rho/rho_eq(r) > DX (dichter Strom)
+DCOLS += [f"dx_{k}" for k in DX]
+TRAJ = ["xc", "yc", "vxc", "vyc", "chic"]   # Schwerpunkt, Geschwindigkeit, lokaler Kontrast (tr > 0.5)
+
+
+def traj(g, m, tr, contrast, X, Y):
+    """Schwerpunkt, mittlere Geschwindigkeit und medianer lokaler Kontrast des Wolkengases (tr > 0.5)."""
+    cl = tr > 0.5
+    w = m[cl]
+    ws = w.sum()
+    if ws <= 0:
+        return [np.nan] * 5
+    return [(X[cl] * w).sum() / ws, (Y[cl] * w).sum() / ws,
+            (g["vx"][cl] * w).sum() / ws, (g["vy"][cl] * w).sum() / ws, float(np.median(contrast[cl]))]
 
 
 def mx_curve(run_dir):
@@ -51,7 +65,7 @@ def mx_curve(run_dir):
     nums = g2_io.snapshot_numbers(run_dir)
     if os.path.exists(cache):
         df = pd.read_csv(cache)
-        if len(df) == len(nums) and all(c in df.columns for c in DCOLS):
+        if len(df) == len(nums) and all(c in df.columns for c in DCOLS + TRAJ):
             return df
     rows, rho_eq, chi0, rho_cl0 = [], None, None, None
     for n in nums:
@@ -68,11 +82,14 @@ def mx_curve(run_dir):
         rows.append([t / YR, m.sum()] + [m[tr > x].sum() for x in XS]
                     + [m[contrast > f * chi0].sum() for f in DF.values()]
                     + [m[rho > f * rho_cl0].sum() for f in DF.values()]
-                    + [m[g["press"] / rho**GAM < f**(-GAM) * K0].sum() for f in DF.values()])
-    df = pd.DataFrame(rows, columns=["t_yr", "m_tot"] + [f"m_{XN[x]}" for x in XS] + DCOLS)
+                    + [m[g["press"] / rho**GAM < f**(-GAM) * K0].sum() for f in DF.values()]
+                    + [m[contrast > c].sum() for c in DX.values()]
+                    + traj(g, m, tr, contrast, X, Y))
+    df = pd.DataFrame(rows, columns=["t_yr", "m_tot"] + [f"m_{XN[x]}" for x in XS] + DCOLS + TRAJ)
     m0 = df["m_tot"].iloc[0]
     for c in df.columns[1:]:
-        df[c] /= m0
+        if c not in TRAJ:
+            df[c] /= m0
     df.to_csv(cache, index=False)
     return df
 
@@ -194,7 +211,8 @@ for r in runs:
 pairs = [(r["name"].replace("_x2_t30", ""), r["name"]) for r in runs if r["name"].endswith("_x2_t30")]
 if pairs:
     names = set(r["name"] for r in runs)
-    meas = [("0.9", "Tracer>0.9"), ("1/3", "Tracer>1/3"), ("da_1/3", "rho>rho0/3"), ("ek_1/3", "K<3^g K0")]
+    meas = [("0.9", "Tracer>0.9"), ("1/3", "Tracer>1/3"), ("da_1/3", "rho>rho0/3"), ("ek_1/3", "K<3^g K0"),
+            ("dx_10", "rho/rho_eq>10")]
     print("\nVergleich t_50 [yr seit 1995.5]: 512 -> doppelte Aufloesung (Strich = nicht erreicht; x2 bis 30 yr)")
     print(f"{'run':18s} " + " ".join(f"{lab:>17s}" for _, lab in meas))
     for lo, hi in pairs:
@@ -222,6 +240,7 @@ for ax, r in zip(axes.flat, runs):
     ax.plot(tr, df["dl_1/3"], "k--", lw=1.4, label="rho/rho_eq > chi0/3")
     ax.plot(tr, df["da_1/3"], "k:", lw=1.4, label="rho > rho_cl0/3 (SB15)")
     ax.plot(tr, df["ek_1/3"], color="m", ls="-.", lw=1.4, label="K < 3^gamma K0")
+    ax.plot(tr, df["dx_10"], color="c", lw=1.4, label="rho/rho_eq > 10")
     for y in YS:
         ax.axhline(y, color="grey", ls=":", lw=0.7)
     ax.axvline(0, color="grey", ls="--", lw=0.7)

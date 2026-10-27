@@ -94,8 +94,9 @@ for ax, (_, label) in zip(axes, MEAS):
     for x2, mk in [(False, "o"), (True, "s")]:
         sub = nv[(nv["measure"] == label) & (nv["x2"] == x2)].dropna(subset=["t_d"])
         for chi, ss in sub.groupby("chi"):
-            ax.scatter(ss["N_cc"], ss["N_tid"], marker=mk, color=colors.get(int(round(chi)), "grey"),
-                       mfc="none" if x2 else None, s=35, label=f"chi={chi:g}" + (" (x2)" if x2 else ""))
+            c = colors.get(int(round(chi)), "grey")
+            ax.scatter(ss["N_cc"], ss["N_tid"], marker=mk, edgecolors=c, facecolors="none" if x2 else c,
+                       s=35, label=f"chi={chi:g}" + (" (x2)" if x2 else ""))
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel("N_cc bei t_50"); ax.set_ylabel("N_tid bei t_50"); ax.set_title(label, fontsize=10)
 axes[0].legend(fontsize=6)

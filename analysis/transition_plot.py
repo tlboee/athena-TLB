@@ -38,7 +38,9 @@ for ax, (key, title) in zip(axes, MEAS):
     sub = g[g["X"] == key]
     for c, rp in zip(cols, rps):
         tp, tt = peri.loc[rp, "t_peri"], peri.loc[rp, "t_tid_peri"]
-        ax.plot(chis, np.minimum(alpha * tcc(chis), tp + tt), color=c, lw=1, alpha=0.7)
+        r0 = g[g["rp"] == rp].iloc[0]
+        tcc_rp = r0["t_cc0"] * np.sqrt(chis / r0["chi"])          # t_cc mit v_Start dieses r_p
+        ax.plot(chis, np.minimum(alpha * tcc_rp, tp + tt), color=c, lw=1, alpha=0.7)
         s = sub[(sub["rp"] == rp) & ~sub["x2"]].sort_values("chi")
         ok = np.isfinite(s["t"]).to_numpy()
         ax.plot(s["chi"][ok], s["t"][ok], "o", color=c, ms=7, label=f"r_p = {rp:.1e} cm")
@@ -66,8 +68,11 @@ for ax, (key, title) in zip(axes, MEAS):
     sub["x"] = alpha * sub["t_cc0"] / sub["t_peri"]
     sub["y"] = sub["t"] / sub["t_peri"]
     ax.plot(xs, xs, "k--", lw=1, label="y = x (Cloud Crushing / KH)")
-    ax.axhspan(1.0, 1.0 + peri["t_tid_peri"].max() / peri["t_peri"].min(), color="0.85",
-               label="1 + t_tid / t_peri (Gezeiten)")
+    for c, rp in zip(cols, rps):
+        ax.plot([1, 15], [1 + peri.loc[rp, "t_tid_peri"] / peri.loc[rp, "t_peri"]] * 2, color=c, lw=2,
+                alpha=0.5, label="1 + t_tid / t_peri (Gezeiten)" if rp == rps[-1] else None)
+    for chi, xy in [(10, (0.25, 0.3)), (100, (0.8, 1.35)), (1000, (2.5, 3.2)), (10000, (8, 6.5))]:
+        ax.text(*xy, f"chi = {chi:g}", fontsize=8, color="0.3")
     ax.axvline(1, color="0.6", lw=0.8)
     for c, rp in zip(cols, rps):
         for x2, mk, mfc in [(False, "o", None), (True, "s", "none")]:
@@ -75,7 +80,8 @@ for ax, (key, title) in zip(axes, MEAS):
             ok = np.isfinite(s["y"]).to_numpy()
             ax.plot(s["x"][ok], s["y"][ok], mk, color=c, mfc=mfc if mfc else c, ms=7,
                     label=f"r_p = {rp:.1e} cm" if not x2 else None)
-            ax.plot(s["x"][~ok], s["t_end"][~ok] / s["t_peri"][~ok], "^", color=c, mfc="none", ms=9)
+            if not x2:
+                ax.plot(s["x"][~ok], s["t_end"][~ok] / s["t_peri"][~ok], "^", color=c, mfc="none", ms=9)
     ax.set_xscale("log"); ax.set_yscale("log"); ax.set_xlim(0.08, 15); ax.set_ylim(0.2, 8)
     ax.set_xlabel(f"{alpha:.1f} t_cc / t_peri   (Cloud Crushing relativ zur Flugzeit zum Perizentrum)")
     ax.set_title(title, fontsize=10)

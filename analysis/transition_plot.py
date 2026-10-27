@@ -22,11 +22,14 @@ MEAS = [("0.9", "Tracer > 0.9 (Mischung)"),
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
 g = tab[tab["run"].str.startswith("g_") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
 g["x2"] = g["run"].str.contains("_x2")
+g["rp"] = g["rp"].map(lambda v: float(f"{v:.2g}"))     # _big-Laeufe haben minimal anderes r_p
 rps = sorted(g["rp"].unique())
 peri = g.drop_duplicates("rp").set_index("rp")[["t_peri", "t_tid_peri"]]
 
 chis = np.logspace(0.8, 4.3, 100)
 t_cc = np.sqrt(chis) * R_C / V0 / YR
+ref = g[(g["X"] == "0.9") & (g["chi"] == 10) & ~g["x2"]]
+alpha = float(np.median(ref["t"] / (np.sqrt(10.0) * R_C / V0 / YR)))   # an chi = 10 angepasst
 fig, axes = plt.subplots(1, len(MEAS), figsize=(5.2 * len(MEAS), 4.6), sharey=True, constrained_layout=True)
 for ax, (key, title) in zip(axes, MEAS):
     sub = g[g["X"] == key]
@@ -40,6 +43,7 @@ for ax, (key, title) in zip(axes, MEAS):
         okh = np.isfinite(h["t"]).to_numpy()
         ax.plot(h["chi"][okh], h["t"][okh], "s", color=c, mfc="none", ms=8)
         ax.axhline(peri.loc[rp, "t_peri"] + peri.loc[rp, "t_tid_peri"], color=c, ls=":", lw=1.2)
+    ax.plot(chis, alpha * t_cc, color="grey", lw=2, alpha=0.6, label=f"{alpha:.1f} t_cc (an chi = 10 angepasst)")
     ax.plot(chis, t_cc, "k-.", lw=1, label="t_cc (Start)")
     ax.plot(chis, t_cc / (2 * np.pi), "k--", lw=1, label="t_KH (Start, lambda = R)")
     ax.set_xscale("log"); ax.set_yscale("log")

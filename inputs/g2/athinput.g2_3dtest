@@ -1,0 +1,79 @@
+<comment>
+problem   = G2-Wolke CC01, Atmosphaere und Senke nach Schartmann+12
+reference = Burkert et al. 2012, arXiv:1201.1414, Abschnitt 6 und Tabelle 1
+configure = --prob=g2_cartesian --coord=cartesian --flux=hllc --nscalars=1 --nghost=4 -mpi
+
+<job>
+problem_id = g2_cart
+
+<output1>
+x3_slice   = 0.0          # Mittelebene
+file_type  = hdf5
+variable   = prim
+dt         = 1.578e7       # alle 0.5 yr
+
+<time>
+cfl_number = 0.3
+nlim       = -1
+tlim       = 6.312e8       # 20 yr: 1995.5 -> 2015.5 (Perizentrum 2013.5)
+integrator = rk3           # wie Burkert+12
+xorder     = 3             # PPM (parabolisch), braucht --nghost>=3
+ncycle_out = 100
+
+<mesh>
+nx1        = 128
+x1min      = -1.3e17
+x1max      = 1.2e16
+ix1_bc     = outflow
+ox1_bc     = outflow
+
+nx2        = 96
+x2min      = -6.2e16
+x2max      = 4.45e16       # Burkert: 2.5e16; hoeher, damit die Wolke den Rand nicht beruehrt
+ix2_bc     = outflow
+ox2_bc     = outflow
+
+nx3        = 16
+x3min      = -1e+16
+x3max      = 1e+16
+ix3_bc     = periodic
+ox3_bc     = periodic
+
+<meshblock>
+nx1        = 16
+nx2        = 16
+nx3        = 16
+
+<hydro>
+gamma      = 1.6666666667  # Burkert+12: Gamma = 1 (spaeter)
+dfloor     = 1.0e-30
+sfloor     = 0.0
+
+<problem>
+# Schwarzes Loch und Atmosphaere (Burkert+12, Gl. 2 und 3)
+M_BH       = 4.31e6        # Sonnenmassen
+rho0       = 1.702e-21     # g/cm^3 bei r0; Schartmann+12: n = 930 cm^-3 bei 1.4e4 R_S
+r0         = 1.0e16        # cm
+mu         = 0.6139        # Schartmann+12
+T0         = -1.0          # <= 0: hydrostatisch berechnet (2.13e8 K)
+r_in       = 1.9e15        # cm, ~1500 R_S wie Schartmann+12
+tr_thresh  = 1.0e-4
+edge_buffer = 2            # Zellen am Rand, die jeden Schritt zurueckgesetzt werden
+T_floor    = 1.0e4         # K, Temperaturboden (Photoionisation), Schutz gegen negative Druecke
+
+# Wolke CC01 (Burkert+12, Tabelle 1)
+x_cloud    = -7.22e16      # cm
+y_cloud    =  2.21e16      # cm
+vx_cloud   = 794.59        # km/s
+vy_cloud   =  48.45        # km/s
+R_cloud    = 1.87e15       # cm
+T_cloud    = 1.0e4         # K
+rho_cloud  = 6.21e-19      # Tabelle CC01 (Burkert+12, Schartmann+12)
+
+<output2>
+file_type  = rst
+dt         = 6.312e7       # Restart-Datei alle 2 yr
+
+<output3>
+file_type  = hst
+dt         = 1.578e6       # History alle 0.05 yr (Gesamtmassen, Zaehler M_sink/M_buffer/M_reset)

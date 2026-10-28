@@ -72,3 +72,4 @@ runs/
 __pycache__/
 logs/
 analysis/*.png
+analysis/*.png

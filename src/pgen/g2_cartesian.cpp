@@ -1,5 +1,5 @@
 //========================================================================================
-// G2-Wolke im heissen Medium um Sgr A*, 2D kartesisch in der Bahnebene
+// G2-Wolke im heissen Medium um Sgr A*, kartesisch: 2D in der Bahnebene oder 3D (Bahn in z = 0)
 // Setup nach Burkert et al. (2012) / Schartmann et al. (2012), Modell CC01
 //
 // Konfiguration:
@@ -71,6 +71,8 @@ enum {CNT_SINK = 0, CNT_BUFFER = 1, CNT_RESET = 2, CNT_BUF_THIRD = 3, CNT_BUF_HA
 Real GM_g, rho0_g, r0_g, T0_g, mu_g, r_in_g, tr_thresh_g, T_floor_g;
 Real rho_min_frac_g, v_max_g, T_max_g;   // Robustheit (Reparatur unphysikalischer Zellen)
 Real x1min_g, x1max_g, x2min_g, x2max_g, buf_g;
+Real x3min_g, x3max_g;
+bool three_d_g;                             // 3D, wenn das Gitter in z mehr als eine Zelle hat
 bool cooling_g, test_cool_g;                // Kuehlung an/aus; Testmodus ohne Schwarzes Loch
 Real Lambda_fac_g, rho_amb_g, T_amb_g;      // Kuehlstaerke; gleichfoermige Umgebung im Test
 std::unique_ptr<Cooling> cooler_g;
@@ -167,10 +169,14 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
   x1max_g = mesh_size.x1max;
   x2min_g = mesh_size.x2min;
   x2max_g = mesh_size.x2max;
+  x3min_g = mesh_size.x3min;
+  x3max_g = mesh_size.x3max;
+  three_d_g = (mesh_size.nx3 > 1);
   const Real dx = (x1max_g - x1min_g) / mesh_size.nx1;
   const Real dy = (x2max_g - x2min_g) / mesh_size.nx2;
+  const Real dz = three_d_g ? (x3max_g - x3min_g) / mesh_size.nx3 : 0.0;
   const int nbuf = pin->GetOrAddInteger("problem", "edge_buffer", 2);
-  buf_g = nbuf * std::max(dx, dy);
+  buf_g = nbuf * std::max(dx, std::max(dy, dz));
 
   EnrollUserExplicitSourceFunction(GravityAndRelax);
 
@@ -197,6 +203,7 @@ void Mesh::InitUserMeshData(ParameterInput *pin) {
     std::cout << "[g2_cartesian] Kuehlung: " << (cooling_g ? "an" : "aus")
               << ", Lambda_fac = " << Lambda_fac_g
               << (test_cool_g ? ", TESTMODUS (kein BH, gleichfoermige Umgebung)" : "") << std::endl;
+    std::cout << "[g2_cartesian] Dimension: " << (three_d_g ? "3D" : "2D") << std::endl;
   }
 }
 
@@ -214,6 +221,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
 
   const Real xc  = pin->GetOrAddReal("problem", "x_cloud", -7.22e16);
   const Real yc  = pin->GetOrAddReal("problem", "y_cloud",  2.21e16);
+  const Real zc  = three_d_g ? pin->GetOrAddReal("problem", "z_cloud", 0.0) : 0.0;
   const Real vxc = pin->GetOrAddReal("problem", "vx_cloud", 794.59) * km;  // Input in km/s
   const Real vyc = pin->GetOrAddReal("problem", "vy_cloud",  48.45) * km;
   const Real Rc  = pin->GetOrAddReal("problem", "R_cloud", 1.87e15);
@@ -224,7 +232,7 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
   // rho_cloud  > 0: feste Dichte (z.B. Burkert+12 Tabelle 1: 6.21e-19)
   // In beiden Faellen gilt in der Wolke P = P_eq(r) (lokales Druckgleichgewicht).
   Real rho_a, P_a;
-  Equilibrium(std::sqrt(xc*xc + yc*yc), rho_a, P_a);
+  Equilibrium(std::sqrt(xc*xc + yc*yc + zc*zc), rho_a, P_a);
   if (rhoc <= 0.0) rhoc = P_a * mu_g * m_H / (k_B * Tc);
 
   if (gid == 0) {
@@ -238,12 +246,13 @@ void MeshBlock::ProblemGenerator(ParameterInput *pin) {
       for (int i=is; i<=ie; ++i) {
         const Real x = pcoord->x1v(i);
         const Real y = pcoord->x2v(j);
+        const Real z = three_d_g ? pcoord->x3v(k) : 0.0;
         Real rho, P;
-        Equilibrium(std::sqrt(x*x + y*y), rho, P);
+        Equilibrium(std::sqrt(x*x + y*y + z*z), rho, P);
         Real vx = 0.0, vy = 0.0, tr = 0.0;
 
-        const Real dx = x - xc, dy = y - yc;
-        if (dx*dx + dy*dy < Rc*Rc) {   // Wolke: P bleibt P_eq(r)
+        const Real dx = x - xc, dy = y - yc, dz = z - zc;
+        if (dx*dx + dy*dy + dz*dz < Rc*Rc) {   // Wolke (Kreis in 2D, Kugel in 3D): P bleibt P_eq(r)
           rho = rhoc;
           vx  = vxc;
           vy  = vyc;
@@ -278,14 +287,16 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
       for (int i=pmb->is; i<=pmb->ie; ++i) {
         const Real x = pmb->pcoord->x1v(i);
         const Real y = pmb->pcoord->x2v(j);
-        const Real r = std::sqrt(x*x + y*y);
+        const Real z = three_d_g ? pmb->pcoord->x3v(k) : 0.0;
+        const Real r = std::sqrt(x*x + y*y + z*z);
         Real rho = cons(IDN, k, j, i);
         const Real vol = pmb->pcoord->GetCellVolume(k, j, i);
 
         // 1. Senke, Pufferzone am Rand und unphysikalische Dichte: zuruecksetzen
         const bool in_sink   = (r < r_in_g);
         const bool in_buffer = (x < x1min_g + buf_g) || (x > x1max_g - buf_g) ||
-                               (y < x2min_g + buf_g) || (y > x2max_g - buf_g);
+                               (y < x2min_g + buf_g) || (y > x2max_g - buf_g) ||
+                               (three_d_g && ((z < x3min_g + buf_g) || (z > x3max_g - buf_g)));
         if (in_sink || in_buffer || !(rho > 0.0)) {
           const Real s_old = cons_scalar(0, k, j, i) * vol;
           if (in_sink)        cnt(CNT_SINK)   += s_old;
@@ -349,6 +360,13 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
         cons(IM1, k, j, i) = m1 + dm1;
         cons(IM2, k, j, i) = m2 + dm2;
         cons(IEN, k, j, i) += dt * (ax * (m1 + 0.5 * dm1) + ay * (m2 + 0.5 * dm2));
+        if (three_d_g) {                   // z-Komponente nur in 3D (2D bleibt bitgleich)
+          const Real az  = -GM_g * z / r3;
+          const Real m3  = cons(IM3, k, j, i);
+          const Real dm3 = dt * rho * az;
+          cons(IM3, k, j, i) = m3 + dm3;
+          cons(IEN, k, j, i) += dt * az * (m3 + 0.5 * dm3);
+        }
 
         // 3. Pristine Zellen auf Gleichgewicht setzen (Tracer aus aktuellem Zustand)
         const Real tr = cons_scalar(0, k, j, i) / rho;

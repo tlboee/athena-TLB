@@ -23,6 +23,7 @@ INPUT   = os.path.join(ATHENA, "inputs", "g2", "athinput.g2_cart_cc01_s12")
 RUNS    = os.path.join(ATHENA, "runs")
 LOGS    = os.path.join(ATHENA, "logs")
 MODULES = "compiler/gnu/14.2 mpi/openmpi/5.0-gnu-14.2 lib/hdf5/1.14-gnu-14.2-openmpi-5.0"
+UNLOAD = "module unload toolkit/nvidia-hpc-sdk devel/cuda 2>/dev/null"   # NVIDIA-SDK setzt sonst OMPI_CXX=nvc++
 
 YR, KM  = 3.156e7, 1.0e5
 GM      = 6.674e-8 * 4.31e6 * 1.989e33
@@ -280,7 +281,7 @@ def main():
         group = todo[i:i + args.bundle]
         parts = [f"( cd {d} && " + " && ".join(f"timeout {r.get('timeout', RUN_TIMEOUT)} {x}" for x in c) + " )"
                  for _, d, r, c in group]
-        wrap = f"module purge; module load {MODULES}; " + "; ".join(parts)
+        wrap = f"module purge; module load {MODULES}; {UNLOAD}; " + "; ".join(parts)
         jobname = f"{group[0][0]}+{len(group) - 1}" if len(group) > 1 else group[0][0]
         sb = ["sbatch", f"--partition={args.partition}", f"--time={args.time}", "--nodes=1",
               f"--ntasks={max(g[2].get('ntasks', NTASKS) for g in group)}", "--mem=16gb", f"--job-name={jobname}",

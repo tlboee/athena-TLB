@@ -13,6 +13,7 @@
 
 module purge
 module load compiler/gnu/14.2 mpi/openmpi/5.0-gnu-14.2 lib/hdf5/1.14-gnu-14.2-openmpi-5.0
+module unload toolkit/nvidia-hpc-sdk devel/cuda 2>/dev/null
 
 ATHENA_DIR="$HOME/athena"
 RUN_DIR="$ATHENA_DIR/runs/g2_tracer"

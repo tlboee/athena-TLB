@@ -73,3 +73,5 @@ __pycache__/
 logs/
 analysis/*.png
 analysis/*.png
+.ipynb_checkpoints/
+Untitled*.ipynb

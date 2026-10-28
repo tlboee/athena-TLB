@@ -71,3 +71,4 @@ doc/doxy*
 runs/
 __pycache__/
 logs/
+analysis/*.png

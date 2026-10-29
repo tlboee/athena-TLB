@@ -274,8 +274,10 @@ FIG_MEAS = [("0.9", "Mixing: tracer > 0.9"),
             ("ek_1/3", "Entropy: K < 3^γ K₀")]
 gr = tab[tab["run"].str.startswith("g_") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
 gr["x2"] = gr["run"].str.contains("_x2")
-fig, axes = plt.subplots(len(FIG_MEAS), 2, figsize=(12, 3.8 * len(FIG_MEAS)), squeeze=False,
+fig, axes = plt.subplots(len(FIG_MEAS), 2, figsize=(12, 4.6 * len(FIG_MEAS)), squeeze=False,
                          constrained_layout=True)
+fig.suptitle("circles: 512, squares: 2× resolution, triangles: not reached, grey band: pericentre",
+             fontsize=9)
 chis = np.logspace(1, 4, 50)
 for row, (key, title) in enumerate(FIG_MEAS):
     g = gr[gr["X"] == key]
@@ -285,7 +287,7 @@ for row, (key, title) in enumerate(FIG_MEAS):
             c = f"C{k}"
             sub = sub.sort_values(xvar)
             ok = np.isfinite(sub["t"]).to_numpy()
-            lab = f"r_p = {gv:.1e} cm" if grp == "rp" else f"chi = {gv:g}"
+            lab = f"r_p = {gv:.1e} cm" if grp == "rp" else f"χ = {gv:g}"
             ax.plot(sub[xvar][ok], sub["t"][ok], "o-", color=c, label=lab)
             ax.plot(sub[xvar][~ok], sub["t_end"][~ok], "^", color=c, mfc="none", ms=9)
             hi = g[g["x2"] & (g[grp] == gv)]
@@ -303,9 +305,7 @@ for row, (key, title) in enumerate(FIG_MEAS):
         ax.set_yscale("log")
         ax.set_ylabel("t_50 [yr since 1995.5]")
         ax.set_title(title, fontsize=10)
-        ax.legend(fontsize=6, loc="best", framealpha=0.85,
-                  title="circles: 512, squares: 2× res., triangles: not reached, grey: pericentre",
-                  title_fontsize=6)
+        ax.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.18), ncol=3, frameon=False)
 out2 = os.path.join(BASE, "study_tXY.png")
 fig.savefig(out2, dpi=150)
 print("Gespeichert:", out1, out2)

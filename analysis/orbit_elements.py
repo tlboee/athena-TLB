@@ -39,25 +39,27 @@ for k, run in enumerate(RUNS):
     tp = tab[tab["run"] == run]["t_peri"].iloc[0]
     c = f"C{k}"
     ts = el["t"] - tp
+    dom = (el["om"] - el["om"][0] + 180.0) % 360.0 - 180.0      # Drehung in (-180, 180]
+    near = np.abs(ts) < 1.0                                        # Schwerpunkt fast auf dem Loch
     th = np.linspace(0, 2 * np.pi, 400)
     a0, e0, om0 = el["a"][0], el["e"][0], np.radians(el["om"][0])
     rk = a0 * (1 - e0**2) / (1 + e0 * np.cos(th - om0))
     ax[0, 0].plot(rk * np.cos(th) / 1e16, rk * np.sin(th) / 1e16, ":", color=c, lw=0.8)
     ax[0, 0].plot(el["x"] / 1e16, el["y"] / 1e16, "-", color=c, label=run)
-    ax[0, 1].plot(ts, el["a"] / a0, color=c, label=run)
-    ax[1, 0].plot(ts, el["e"], color=c)
-    ax[1, 1].plot(ts, el["om"] - el["om"][0], color=c)
+    ax[0, 1].plot(ts, np.where(near, np.nan, el["a"] / a0), color=c, label=run)
+    ax[1, 0].plot(ts, np.where(near, np.nan, el["e"]), color=c)
+    ax[1, 1].plot(ts, np.where(near, np.nan, dom), color=c)
     for dt in (-5, 5, 20, 50):
         i = np.argmin(np.abs(ts - dt))
         if abs(ts[i] - dt) < 1.5:
-            print(f"{run:18s} {ts[i]:6.1f} {el['a'][i]/a0:7.3f} {el['e'][i]:6.3f} {el['om'][i]-el['om'][0]:8.1f} "
+            print(f"{run:18s} {ts[i]:6.1f} {el['a'][i]/a0:7.3f} {el['e'][i]:6.3f} {dom[i]:8.1f} "
                   f"{el['rp'][i]:9.2e} {el['ra'][i]:9.2e} {el['h'][i]/el['h'][0]:6.3f}")
 ax[0, 0].plot(0, 0, "k+", ms=10)
 ax[0, 0].set_aspect("equal"); ax[0, 0].set_xlim(-30, 8); ax[0, 0].set_ylim(-20, 6)
 ax[0, 0].set_xlabel("x [1e16 cm]"); ax[0, 0].set_ylabel("y [1e16 cm]")
-ax[0, 0].set_title("Schwerpunkt (durchgezogen) und urspruengliche Keplerbahn (gepunktet)", fontsize=9)
+ax[0, 0].set_title("cloud centroid (solid) and initial Keplerian orbit (dotted)", fontsize=9)
 ax[0, 0].legend(fontsize=7)
-for a_, lab in [(ax[0, 1], "a / a(0)"), (ax[1, 0], "Exzentrizitaet e"), (ax[1, 1], "Drehung des Perizentrums [Grad]")]:
+for a_, lab in [(ax[0, 1], "a / a(0)"), (ax[1, 0], "eccentricity e"), (ax[1, 1], "rotation of pericentre [deg]")]:
     a_.axvline(0, color="grey", lw=0.8); a_.set_xlabel("t - t_peri [yr]"); a_.set_ylabel(lab)
 ax[0, 1].set_yscale("log")
 out = os.path.join(BASE, "orbit_elements.png")

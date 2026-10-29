@@ -269,9 +269,9 @@ out1 = os.path.join(BASE, "study_mX.png")
 fig.savefig(out1, dpi=130)
 
 # --- Abbildung 2: t_50 gegen chi und r_p fuer drei Masse; 512 gefuellt, doppelte Aufloesung leer ---
-FIG_MEAS = [("0.9", "Tracer > 0.9 (Mischung)"),
-            ("ds", "dichter Strom: rho/rho_eq > min(10, chi0/3)"),
-            ("ek_1/3", "Entropie: K < 3^gamma K0")]
+FIG_MEAS = [("0.9", "Mixing: tracer > 0.9"),
+            ("ds", "Dense stream: ρ/ρ_eq > min(10, χ₀/3)"),
+            ("ek_1/3", "Entropy: K < 3^γ K₀")]
 gr = tab[tab["run"].str.startswith("g_") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
 gr["x2"] = gr["run"].str.contains("_x2")
 fig, axes = plt.subplots(len(FIG_MEAS), 2, figsize=(12, 3.8 * len(FIG_MEAS)), squeeze=False,
@@ -293,17 +293,18 @@ for row, (key, title) in enumerate(FIG_MEAS):
             ax.plot(hi[xvar][okh], hi["t"][okh], "s", color=c, mfc="none", ms=8)
         ax.axhspan(18.0, 21.4, color="grey", alpha=0.15)
         if xvar == "chi":
-            ax.plot(chis, np.sqrt(chis) * R_C / V0 / YR, "k--", lw=1, label="t_cc (Start)")
-            ax.set_xlabel("chi")
+            ax.plot(chis, np.sqrt(chis) * R_C / V0 / YR, "k--", lw=1, label="t_cc (start)")
+            ax.set_xlabel("χ")
         else:
             peri = g.drop_duplicates("rp").sort_values("rp")
-            ax.plot(peri["rp"], peri["t_peri"] + peri["t_tid_peri"], "k:", lw=1, label="Perizentrum + t_tid")
+            ax.plot(peri["rp"], peri["t_peri"] + peri["t_tid_peri"], "k:", lw=1, label="pericentre + t_tid")
             ax.set_xlabel("r_p [cm]")
         ax.set_xscale("log")
         ax.set_yscale("log")
-        ax.set_ylabel("t_50 [yr seit 1995.5]")
+        ax.set_ylabel("t_50 [yr since 1995.5]")
         ax.set_title(title, fontsize=10)
-        ax.legend(fontsize=6, title="Kreis: 512, Quadrat: doppelt, Dreieck: nicht erreicht, grau: Perizentrum",
+        ax.legend(fontsize=6, loc="best", framealpha=0.85,
+                  title="circles: 512, squares: 2× res., triangles: not reached, grey: pericentre",
                   title_fontsize=6)
 out2 = os.path.join(BASE, "study_tXY.png")
 fig.savefig(out2, dpi=150)

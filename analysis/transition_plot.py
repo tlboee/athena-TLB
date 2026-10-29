@@ -29,6 +29,16 @@ cols = plt.cm.viridis(np.linspace(0.1, 0.85, len(rps)))
 ref = g[(g["X"] == "0.9") & (g["chi"] == 10) & ~g["x2"]]
 alpha = float(np.median(ref["t"] / ref["t_cc0"]))
 print(f"alpha = {alpha:.2f} (an chi = 10 angepasst, Tracer > 0.9, 512)")
+
+def fit_alpha(key, x2):
+    """alpha = median(t_50 / t_cc,Start) der chi = 10-Laeufe fuer ein Mass und eine Aufloesung."""
+    r = g[(g["X"] == key) & (g["chi"] == 10) & (g["x2"] == x2)].dropna(subset=["t"])
+    return float(np.median(r["t"] / r["t_cc0"])) if len(r) else np.nan
+
+ALPHA = {k: fit_alpha(k, False) for k, _ in MEAS}
+ALPHA2 = {k: fit_alpha(k, True) for k, _ in MEAS}
+for k, lab in MEAS:
+    print(f"alpha [{lab}]: {ALPHA[k]:.2f} (512), {ALPHA2[k]:.2f} (2x), Verhaeltnis {ALPHA2[k] / ALPHA[k]:.2f}")
 chis = np.logspace(0.8, 4.3, 300)
 tcc = lambda chi: np.sqrt(chi) * R_C / V0 / YR
 
@@ -40,7 +50,7 @@ for ax, (key, title) in zip(axes, MEAS):
         tp, tt = peri.loc[rp, "t_peri"], peri.loc[rp, "t_tid_peri"]
         r0 = g[g["rp"] == rp].iloc[0]
         tcc_rp = r0["t_cc0"] * np.sqrt(chis / r0["chi"])          # t_cc mit v_Start dieses r_p
-        ax.plot(chis, np.minimum(alpha * tcc_rp, tp + tt), color=c, lw=1, alpha=0.7)
+        ax.plot(chis, np.minimum(ALPHA[key] * tcc_rp, tp + tt), color=c, lw=1, alpha=0.7)
         s = sub[(sub["rp"] == rp) & ~sub["x2"]].sort_values("chi")
         ok = np.isfinite(s["t"]).to_numpy()
         ax.plot(s["chi"][ok], s["t"][ok], "o", color=c, ms=7, label=f"r_p = {rp:.1e} cm")
@@ -52,10 +62,10 @@ for ax, (key, title) in zip(axes, MEAS):
     ax.text(150, 13, "at pericentre (tidal)", fontsize=8, color="0.3")
     ax.text(1500, 45, "survives\npericentre", fontsize=8, color="0.3")
     ax.set_xscale("log"); ax.set_yscale("log"); ax.set_xlim(6, 2e4); ax.set_ylim(3, 150)
-    ax.set_xlabel("χ"); ax.set_title(title, fontsize=10)
+    ax.set_xlabel("χ"); ax.set_title(f"{title}  (α = {ALPHA[key]:.1f})", fontsize=10)
 axes[0].set_ylabel("t_50 [yr since 1995.5]")
 fig.legend(*axes[0].get_legend_handles_labels(), loc="outside right center", fontsize=8,
-           title=f"lines: min({alpha:.1f} t_cc, t_peri + t_tid)\ncircles: 512, squares: 2× res.\ntriangles: not reached",
+           title=f"lines: min(α t_cc, t_peri + t_tid), α per panel\ncircles: 512, squares: 2× res.\ntriangles: not reached",
            title_fontsize=7)
 outA = os.path.join(BASE, "transition_A.png")
 fig.savefig(outA, dpi=150)
@@ -65,9 +75,11 @@ fig, axes = plt.subplots(1, len(MEAS), figsize=(6.2 * len(MEAS), 4.8), sharey=Tr
 xs = np.logspace(-1.5, 1.5, 100)
 for ax, (key, title) in zip(axes, MEAS):
     sub = g[g["X"] == key].copy()
-    sub["x"] = alpha * sub["t_cc0"] / sub["t_peri"]
+    sub["x"] = ALPHA[key] * sub["t_cc0"] / sub["t_peri"]
     sub["y"] = sub["t"] / sub["t_peri"]
     ax.plot(xs, xs, "k--", lw=1, label="y = x (cloud crushing / KH)")
+    ax.plot(xs, xs * ALPHA2[key] / ALPHA[key], color="0.6", ls="--", lw=1,
+            label="same with α of 2× resolution")
     for c, rp in zip(cols, rps):
         ax.plot([1, 15], [1 + peri.loc[rp, "t_tid_peri"] / peri.loc[rp, "t_peri"]] * 2, color=c, lw=2,
                 alpha=0.5, label="1 + t_tid / t_peri (tidal)" if rp == rps[-1] else None)
@@ -83,8 +95,8 @@ for ax, (key, title) in zip(axes, MEAS):
             if not x2:
                 ax.plot(s["x"][~ok], s["t_end"][~ok] / s["t_peri"][~ok], "^", color=c, mfc="none", ms=9)
     ax.set_xscale("log"); ax.set_yscale("log"); ax.set_xlim(0.08, 15); ax.set_ylim(0.2, 8)
-    ax.set_xlabel(f"α t_cc / t_peri   (α = {alpha:.1f})")
-    ax.set_title(title, fontsize=10)
+    ax.set_xlabel("α t_cc / t_peri")
+    ax.set_title(f"{title}  (α = {ALPHA[key]:.1f}; 2× res.: {ALPHA2[key]:.1f})", fontsize=10)
 axes[0].set_ylabel("t_50 / t_peri")
 fig.legend(*axes[0].get_legend_handles_labels(), loc="outside right center", fontsize=8,
            title="circles: 512, squares: 2× res.\ntriangles: not reached", title_fontsize=7)

@@ -192,6 +192,29 @@ def make_runs():
         r["nx1"], r["nx2"], r["mb"], r["timeout"] = nx1, 2 * NX2, 128, 6000
         r["info"] = r["info"] + " | doppelte Aufloesung (dx = 1.39e14 cm)"
         runs[name + "_x2"] = r
+
+    # --- Kuehlung (Townsend, Max' Implementierung): CC01, grosse Domain, PLM ---
+    # Eigene Input-Datei, weil cooling/Lambda_fac nur so per Kommandozeile setzbar sind.
+    cool_input = os.path.join(os.path.dirname(INPUT), "athinput.g2_cart_cc01_cool")
+    variants = [(True, 1.0, k) for k in (1, 2, 4)] + [(True, 0.1, 1), (True, 0.01, 1), (False, 1.0, 4)]
+    for cool, fac, k in variants:
+        r = json.loads(json.dumps(runs["ps_ref_big"]))
+        nx1, nx2, mb = 1152 * k, NX2 * k, (64 if k == 1 else 128)
+        r["params"] = dict(r["params"], **{"mesh/nx1": nx1, "mesh/nx2": nx2,
+                                             "meshblock/nx1": mb, "meshblock/nx2": mb})
+        r["nx1"], r["nx2"], r["mb"] = nx1, nx2, mb
+        if k > 1:
+            r["timeout"] = {2: 7200, 4: 21000}[k]
+        name = "ps_ref_big"
+        if cool:
+            r["input"] = cool_input
+            r["params"]["problem/Lambda_fac"] = fac
+            name += "_cool" + ("" if fac == 1.0 else f"_L{fac:g}")
+            r["info"] = r["info"] + f" | Kuehlung, Lambda_fac = {fac:g}"
+        if k > 1:
+            name += f"_x{k}"
+            r["info"] = r["info"] + f" | {k}-fache Aufloesung ({nx1} x {nx2})"
+        runs[name] = r
     for run in runs.values():
         run["orbit"] = orbit(run["vx"], run["vy"])
         run["t_peri"] = round(run["orbit"]["t_peri_yr"], 2)
@@ -208,9 +231,9 @@ def commands(run, t_end):
     scheme = run.get("scheme", SCHEME)
     if scheme in ("ppm", "plm"):
         xo = 3 if scheme == "ppm" else 2
-        return [f"{mp} -i {INPUT} -d . {ov(COMMON)} time/xorder={xo} time/cfl_number=0.3 "
+        return [f"{mp} -i {run.get('input', INPUT)} -d . {ov(COMMON)} time/xorder={xo} time/cfl_number=0.3 "
                 f"{ov(run['params'])} time/tlim={t_end * YR:.6g}"]
-    return [f"{mp} -i {INPUT} -d . {ov(COMMON)} {ov(run['params'])} time/tlim={t1:.6g}",
+    return [f"{mp} -i {run.get('input', INPUT)} -d . {ov(COMMON)} {ov(run['params'])} time/tlim={t1:.6g}",
             f"{mp} -r g2_cart.final.rst -d . time/cfl_number=0.2 time/tlim={t2:.6g}",
             f"{mp} -r g2_cart.final.rst -d . time/xorder=2 time/cfl_number=0.3 time/tlim={t_end * YR:.6g}"]
 
@@ -250,6 +273,7 @@ def main():
     ap.add_argument("--bundle", type=int, default=7, help="Laeufe pro Slurm-Job")
     ap.add_argument("--partition", default="cpu_il")
     ap.add_argument("--time", default="02:00:00")
+    ap.add_argument("--mem", default="16gb", help="Speicher pro Job (x4: z. B. 64gb)")
     args = ap.parse_args()
 
     runs = make_runs()
@@ -284,7 +308,7 @@ def main():
         wrap = f"module purge; module load {MODULES}; {UNLOAD}; " + "; ".join(parts)
         jobname = f"{group[0][0]}+{len(group) - 1}" if len(group) > 1 else group[0][0]
         sb = ["sbatch", f"--partition={args.partition}", f"--time={args.time}", "--nodes=1",
-              f"--ntasks={max(g[2].get('ntasks', NTASKS) for g in group)}", "--mem=16gb", f"--job-name={jobname}",
+              f"--ntasks={max(g[2].get('ntasks', NTASKS) for g in group)}", f"--mem={args.mem}", f"--job-name={jobname}",
               f"--output={LOGS}/{jobname}_%j.out", f"--wrap={wrap}"]
         print(f"\n== Job {i // args.bundle + 1}: " + ", ".join(g[0] for g in group))
         if args.dry_run:
@@ -296,7 +320,7 @@ def main():
         for name, d, r, c in group:
             os.makedirs(d)
             manifest = {"name": name, "info": r["info"], "date": str(datetime.date.today()),
-                        "git": head, "input": INPUT, "binary": BINARY, "ntasks": r.get("ntasks", NTASKS),
+                        "git": head, "input": r.get("input", INPUT), "binary": BINARY, "ntasks": r.get("ntasks", NTASKS),
                         "common": COMMON, "params": r["params"], "chi": r["chi"], "rp_target": r["rp"],
                         "vx_kms": r["vx"], "vy_kms": r["vy"], "orbit": r["orbit"],
                         "t_peri_yr": r["t_peri"], "t_end_yr": args.tend,

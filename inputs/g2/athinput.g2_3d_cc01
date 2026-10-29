@@ -17,7 +17,7 @@ cfl_number = 0.3
 nlim       = -1
 tlim       = 6.312e8       # 20 yr: 1995.5 -> 2015.5 (Perizentrum 2013.5)
 integrator = rk3           # wie Burkert+12
-xorder     = 3             # PPM (parabolisch), braucht --nghost>=3
+xorder     = 2             # PLM (wie Parameterstudie; PPM bricht in kaltem, schnellem Gas zusammen)
 ncycle_out = 100
 
 <mesh>

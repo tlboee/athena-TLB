@@ -384,7 +384,7 @@ void GravityAndRelax(MeshBlock *pmb, const Real time, const Real dt,
                                      + SQR(cons(IM3, k, j, i))) / rho;
           const Real T = (cons(IEN, k, j, i) - ekin_c) * gm1 * mu_g * m_H / (rho * k_B);
           if (std::isfinite(T) && T > T_floor_g) {
-            const Real T_new = std::max(cooler_g->townsend(T, rho, dt, Lambda_fac_g), T_floor_g);
+            const Real T_new = std::max(cooler_g->townsend(T, rho, dt * Lambda_fac_g)   // Faktor ueber dt: umgeht Zweig ohne Lambda_fac in townsend(), T_floor_g);
             const Real de = (T_new - T) * rho * k_B / (mu_g * m_H * gm1);
             cons(IEN, k, j, i) += de;
             cnt(CNT_COOL) -= de * vol;

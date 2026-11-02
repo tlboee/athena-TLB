@@ -2,7 +2,9 @@
 
 t_KH = sqrt(chi) R / (2 pi v)  (lambda = R, = t_cc / 2 pi)
 idealisiert: Keplerbahn, chi = chi0 r_start / r (Druckgleichgewicht bei fester T_c)
-gemessen:    chi = medianer lokaler Kontrast der Wolke (chic), v = |v_Schwerpunkt| (Atmosphaere ruht), aus mX.csv
+gemessen:    chi = massengewichteter Median von rho/rho_eq (Gewicht rho tr, aus core_contrast.csv, sonst
+             aus den Snapshots berechnet und dort gespeichert); v = |v_Schwerpunkt| aus mX.csv (Atmosphaere ruht).
+             Zum Vergleich blass: Median ueber Zellen mit tr > 0.5 (chic aus mX.csv, wird von der Huelle dominiert).
 N_KH(t) = int dt / t_KH; Vergleich mit t / t_KH(Start) und t / t_KH(Perizentrum).
 Zerstoerungszeiten t_50 (Tracer > 0.9, dichter Strom) aus study_table.csv.
 Aufruf (Notebook):  %run ~/athena/analysis/kh_plot.py [lauf:bezeichnung ...]
@@ -11,6 +13,8 @@ import json, math, os, sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import g2_io
 
 BASE = os.path.expanduser("~/athena/runs")
 YR, KM = 3.156e7, 1.0e5
@@ -18,9 +22,43 @@ GM = 6.674e-8 * 4.31e6 * 1.989e33
 X0, Y0 = -7.22e16, 2.21e16
 R_START = math.hypot(X0, Y0)
 R_C = 1.87e15
+RHO0, R0, R_IN = 1.702e-21, 1.0e16, 1.9e15
 DEFAULT = ["g_chi10_rp4:χ = 10", "g_chi100_rp4:χ = 100", "g_chi1000_rp4:χ = 1000", "ps_ref_big:CC01 (χ ≈ 2760)"]
 RUNS = [a.split(":", 1) if ":" in a else (a, a) for a in (sys.argv[1:] or DEFAULT)]
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
+
+def wquant(x, w, q):
+    i = np.argsort(x)
+    cw = np.cumsum(w[i])
+    return float(x[i][np.searchsorted(cw, q * cw[-1])]) if cw[-1] > 0 else np.nan
+
+def weighted_contrast(run, t_end):
+    """Massengewichteter Median des Kontrasts; Cache core_contrast.csv (gleiche Spalten wie core_contrast.py)."""
+    d = os.path.join(BASE, run)
+    cache = os.path.join(d, "core_contrast.csv")
+    if os.path.exists(cache):
+        df = pd.read_csv(cache)
+        if df["t_yr"].max() >= min(t_end, 50.0) - 0.5:
+            return df["t_yr"].to_numpy(), df["c_wmed"].to_numpy()
+    rows = []
+    for n in g2_io.snapshot_numbers(d):
+        t, s = g2_io.load_snapshot(d, n)
+        if t / YR > t_end + 0.5:
+            break
+        X, Y = np.meshgrid(s["x"], s["y"])
+        rho, tr = s["rho"], s["r0"]
+        c = rho / (RHO0 * R0 / np.maximum(np.hypot(X, Y), R_IN))
+        w = rho * tr
+        sel, m9 = tr > 1e-4, tr > 0.9
+        rows.append([t / YR,
+                     float(np.median(c[tr > 0.5])) if (tr > 0.5).any() else np.nan,
+                     wquant(c[sel], w[sel], 0.5), wquant(c[sel], w[sel], 0.9),
+                     float((c[m9] * w[m9]).sum() / w[m9].sum()) if m9.any() else np.nan])
+        print(f"  {run}: t = {t/YR:5.1f} yr", end="\r")
+    print()
+    df = pd.DataFrame(rows, columns=["t_yr", "c_cellmed", "c_wmed", "c_w90", "c_mean09"])
+    df.to_csv(cache, index=False)
+    return df["t_yr"].to_numpy(), df["c_wmed"].to_numpy()
 
 def kepler_rv(vx, vy, t_yr):
     ux, uy = vx * KM, vy * KM
@@ -43,7 +81,8 @@ def cumint(t, tx):
 
 fig, axes = plt.subplots(2, len(RUNS), figsize=(5.4 * len(RUNS), 8), sharex="col", constrained_layout=True,
                          squeeze=False)
-print(f"{'Lauf':16s} {'tKH(0)':>7s} {'tKH(p)':>7s} {'Mass':>12s} {'t_d':>6s} {'N_int':>6s} {'N_mess':>7s} {'t/tKH0':>7s} {'t/tKHp':>7s}")
+print(f"{'Lauf':16s} {'tKH(0)':>7s} {'tKH(p)':>7s} {'Mass':>12s} {'t_d':>6s} {'N_ideal':>8s} {'N_mess':>7s} "
+      f"{'N_Zellm.':>9s} {'t/tKH0':>7s} {'t/tKHp':>7s}")
 for col, (run, lab) in enumerate(RUNS):
     with open(os.path.join(BASE, run, "manifest.json")) as f:
         man = json.load(f)
@@ -57,22 +96,29 @@ for col, (run, lab) in enumerate(RUNS):
     tkh = np.sqrt(chi0 * R_START / r) * R / v / (2 * np.pi) / YR
     N_id = cumint(t, tkh)
     tkh0, tkhp = tkh[0], tkh[np.argmin(r)]
-    # gemessen
+    # gemessen: Geschwindigkeit des Schwerpunkts, Kontrast massengewichtet bzw. Median ueber Zellen
     mx = pd.read_csv(os.path.join(BASE, run, "mX.csv")).dropna(subset=["xc"])
+    mx = mx[mx["t_yr"] <= t_end + 0.01]
     tm = mx["t_yr"].to_numpy()
-    vm = np.hypot(mx["vxc"], mx["vyc"]).to_numpy()
-    tkh_m = np.sqrt(np.maximum(mx["chic"].to_numpy(), 1.0)) * R / np.maximum(vm, 1.0) / (2 * np.pi) / YR
-    N_m = cumint(tm, tkh_m)
-    # Zeilen zeichnen
+    vm = np.maximum(np.hypot(mx["vxc"], mx["vyc"]).to_numpy(), 1.0)
+    tw, cw = weighted_contrast(run, t_end)
+    chi_w = np.interp(tm, tw, cw)
+    tkh_w = np.sqrt(np.maximum(chi_w, 1.0)) * R / vm / (2 * np.pi) / YR
+    tkh_c = np.sqrt(np.maximum(mx["chic"].to_numpy(), 1.0)) * R / vm / (2 * np.pi) / YR
+    N_w, N_c = cumint(tm, tkh_w), cumint(tm, tkh_c)
+    # obere Zeile
     ax = axes[0, col]
     ax.plot(t - tp, tkh, "k-", lw=1.5, label="idealised (χ ∝ 1/r, Kepler)")
-    ax.plot(tm - tp, tkh_m, "o", color="C1", ms=3, label="measured (cloud contrast and velocity)")
+    ax.plot(tm - tp, tkh_w, "o", color="C1", ms=3, label="measured, mass-weighted contrast")
+    ax.plot(tm - tp, tkh_c, ".", color="0.75", ms=2, label="measured, cell median (envelope)")
     ax.set_yscale("log"); ax.set_ylabel("t_KH [yr]")
     ax.set_title(f"{lab}: idealised t_KH {tkh0:.1f} yr (start) → {tkhp:.1f} yr (pericentre),\n"
                  f"only ×{tkh0/tkhp:.1f} before pericentre; rises towards apocentre", fontsize=9)
+    # untere Zeile
     ax = axes[1, col]
     ax.plot(t - tp, N_id, "k-", lw=1.5, label="∫ dt / t_KH, idealised")
-    ax.plot(tm - tp, N_m, "-", color="C1", label="∫ dt / t_KH, measured")
+    ax.plot(tm - tp, N_w, "-", color="C1", label="∫ dt / t_KH, measured (mass-weighted)")
+    ax.plot(tm - tp, N_c, "-", color="0.75", lw=1, label="∫ dt / t_KH, measured (cell median)")
     ax.plot(t - tp, t / tkh0, "--", color="C0", label="t / t_KH(start)")
     ax.plot(t - tp, t / tkhp, ":", color="C2", lw=2, label="t / t_KH(pericentre)")
     for key, ls, nm in [("0.9", "-", "mixing"), ("ds", "--", "dense stream")]:
@@ -80,10 +126,10 @@ for col, (run, lab) in enumerate(RUNS):
         if len(s) and np.isfinite(s.iloc[0]):
             td = s.iloc[0]
             ax.axvline(td - tp, color="grey", ls=ls, lw=1)
-            ax.text(td - tp, ax.get_ylim()[1] if False else 0.02, f" t_50 {nm}", rotation=90, fontsize=7,
-                    color="grey", va="bottom", transform=ax.get_xaxis_transform())
-            print(f"{run:16s} {tkh0:7.2f} {tkhp:7.2f} {nm:>12s} {td:6.1f} {np.interp(td, t, N_id):6.1f} "
-                  f"{np.interp(td, tm, N_m):7.1f} {td / tkh0:7.1f} {td / tkhp:7.1f}")
+            ax.text(td - tp, 0.02, f" t_50 {nm}", rotation=90, fontsize=7, color="grey", va="bottom",
+                    transform=ax.get_xaxis_transform())
+            print(f"{run:16s} {tkh0:7.2f} {tkhp:7.2f} {nm:>12s} {td:6.1f} {np.interp(td, t, N_id):8.1f} "
+                  f"{np.interp(td, tm, N_w):7.1f} {np.interp(td, tm, N_c):9.1f} {td / tkh0:7.1f} {td / tkhp:7.1f}")
     ax.set_yscale("log"); ax.set_ylim(0.1, 300); ax.set_xlabel("t − t_peri [yr]"); ax.set_ylabel("N_KH")
     for a_ in axes[:, col]:
         a_.axvline(0, color="grey", lw=0.6)

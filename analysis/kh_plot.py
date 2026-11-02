@@ -18,7 +18,7 @@ GM = 6.674e-8 * 4.31e6 * 1.989e33
 X0, Y0 = -7.22e16, 2.21e16
 R_START = math.hypot(X0, Y0)
 R_C = 1.87e15
-DEFAULT = ["g_chi100_rp4:χ = 100", "g_chi1000_rp4:χ = 1000", "ps_ref_big:CC01 (χ ≈ 2760)"]
+DEFAULT = ["g_chi10_rp4:χ = 10", "g_chi100_rp4:χ = 100", "g_chi1000_rp4:χ = 1000", "ps_ref_big:CC01 (χ ≈ 2760)"]
 RUNS = [a.split(":", 1) if ":" in a else (a, a) for a in (sys.argv[1:] or DEFAULT)]
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
 
@@ -68,8 +68,8 @@ for col, (run, lab) in enumerate(RUNS):
     ax.plot(t - tp, tkh, "k-", lw=1.5, label="idealised (χ ∝ 1/r, Kepler)")
     ax.plot(tm - tp, tkh_m, "o", color="C1", ms=3, label="measured (cloud contrast and velocity)")
     ax.set_yscale("log"); ax.set_ylabel("t_KH [yr]")
-    ax.set_title(f"{lab}: idealised t_KH varies only ×{tkh.max()/tkh.min():.1f}\n"
-                 f"(start {tkh0:.1f} yr, pericentre {tkhp:.1f} yr)", fontsize=9)
+    ax.set_title(f"{lab}: idealised t_KH {tkh0:.1f} yr (start) → {tkhp:.1f} yr (pericentre),\n"
+                 f"only ×{tkh0/tkhp:.1f} before pericentre; rises towards apocentre", fontsize=9)
     ax = axes[1, col]
     ax.plot(t - tp, N_id, "k-", lw=1.5, label="∫ dt / t_KH, idealised")
     ax.plot(tm - tp, N_m, "-", color="C1", label="∫ dt / t_KH, measured")

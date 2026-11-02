@@ -19,7 +19,7 @@ V0 = math.hypot(794.59, 48.45) * 1e5
 MEAS = [("0.9", "Mixing: tracer > 0.9"), ("ds", "Dense stream: ρ/ρ_eq > min(10, χ₀/3)")]
 
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
-g = tab[tab["run"].str.startswith("g_") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
+g = tab[tab["run"].str.startswith("g_") & ~tab["run"].str.contains("_R") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
 g["x2"] = g["run"].str.contains("_x2")
 g["rp"] = g["rp"].map(lambda v: float(f"{v:.2g}"))
 rps = sorted(g["rp"].unique())

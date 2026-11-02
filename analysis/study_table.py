@@ -272,7 +272,7 @@ fig.savefig(out1, dpi=130)
 FIG_MEAS = [("0.9", "Mixing: tracer > 0.9"),
             ("ds", "Dense stream: ρ/ρ_eq > min(10, χ₀/3)"),
             ("ek_1/3", "Entropy: K < 3^γ K₀")]
-gr = tab[tab["run"].str.startswith("g_") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
+gr = tab[tab["run"].str.startswith("g_") & ~tab["run"].str.contains("_R") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
 gr["x2"] = gr["run"].str.contains("_x2")
 fig, axes = plt.subplots(len(FIG_MEAS), 2, figsize=(12, 4.6 * len(FIG_MEAS)), squeeze=False,
                          constrained_layout=True)

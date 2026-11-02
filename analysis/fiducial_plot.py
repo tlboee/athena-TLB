@@ -37,8 +37,8 @@ for ax, (kind, lst) in zip(axes, RUNS.items()):
                 vals.append(float(np.interp(tp + dt, df["t_yr"], df[col])))
         print(f"{run:26s} {vals[0]:11.2f} {vals[1]:11.2f} {vals[2]:9.2f} {vals[3]:9.2f}")
     ax.axvspan(-18, 0, color="0.92", zorder=0)
-    ax.text(-17, 0.93, "before pericentre: cloud cannot be\ncompressed fast enough → contrast\nfalls with the orbit",
-            fontsize=7, color="0.35", va="top")
+    ax.text(-17, 0.06, "before pericentre: cloud cannot be\ncompressed fast enough → contrast\nfalls with the orbit",
+            fontsize=7, color="0.35", va="bottom")
     ax.axvline(0, color="grey", lw=0.8)
     ax.set_xlim(-18, T_END - 18); ax.set_ylim(0, 1.02)
     ax.set_xlabel("t − t_peri [yr]")

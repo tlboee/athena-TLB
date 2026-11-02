@@ -215,6 +215,21 @@ def make_runs():
             name += f"_x{k}"
             r["info"] = r["info"] + f" | {k}-fache Aufloesung ({nx1} x {nx2})"
         runs[name] = r
+
+    # --- Test des Uebergangs ueber den Wolkenradius: t_cc ~ R, t_tid und t_peri unabhaengig von R ---
+    # Gitter so gewaehlt, dass die Wolke mindestens 6.7 Zellen pro Radius hat.
+    for base in ("g_chi10_rp4", "g_chi100_rp4", "g_chi1000_rp4"):
+        for f, k in [(0.25, 4), (0.5, 2), (2.0, 1), (4.0, 1)]:
+            r = json.loads(json.dumps(runs[base]))
+            nx1, nx2, mb = r.get("nx1", NX1) * k, r.get("nx2", NX2) * k, (64 if k == 1 else 128)
+            r["params"] = dict(r["params"], **{"problem/R_cloud": f"{f * R_CLOUD:.4g}",
+                                                 "mesh/nx1": nx1, "mesh/nx2": nx2,
+                                                 "meshblock/nx1": mb, "meshblock/nx2": mb})
+            r["nx1"], r["nx2"], r["mb"], r["R_cloud"] = nx1, nx2, mb, f * R_CLOUD
+            if k > 1:
+                r["timeout"] = {2: 7200, 4: 21000}[k]
+            r["info"] = r["info"] + f" | R = {f:g} R_0" + (f", {k}-fache Aufloesung" if k > 1 else "")
+            runs[f"{base}_R{f:g}" + (f"_x{k}" if k > 1 else "")] = r
     for run in runs.values():
         run["orbit"] = orbit(run["vx"], run["vy"])
         run["t_peri"] = round(run["orbit"]["t_peri_yr"], 2)
@@ -239,6 +254,7 @@ def commands(run, t_end):
 
 
 def preflight(name, run, dom, t_end):
+    Rc = run.get("R_cloud", R_CLOUD)
     """Liste von (ok, Text) fuer einen Lauf."""
     o, p, out = run["orbit"], run["params"], []
     T_c = float(p.get("problem/T_cloud", 1e4))
@@ -246,9 +262,9 @@ def preflight(name, run, dom, t_end):
     out.append((T_f <= T_c * 1.0001, f"T_floor {T_f:.3g} K <= T_cloud {T_c:.3g} K"))
     dx = (dom["x1max"] - dom["x1min"]) / run.get("nx1", NX1)
     x0 = float(p.get("problem/x_cloud", X0))
-    inside = (x0 - R_CLOUD > dom["x1min"] + 2 * dx and x0 + R_CLOUD < dom["x1max"] - 2 * dx and
-              Y0 - R_CLOUD > dom["x2min"] + 2 * dx and Y0 + R_CLOUD < dom["x2max"] - 2 * dx)
-    out.append((inside, f"Wolke innerhalb Domain und Puffer (R = {R_CLOUD / dx:.1f} Zellen)"))
+    inside = (x0 - Rc > dom["x1min"] + 2 * dx and x0 + Rc < dom["x1max"] - 2 * dx and
+              Y0 - Rc > dom["x2min"] + 2 * dx and Y0 + Rc < dom["x2max"] - 2 * dx)
+    out.append((inside, f"Wolke innerhalb Domain und Puffer (R = {Rc / dx:.1f} Zellen)"))
     out.append((o["rp"] > 2 * R_IN, f"r_p = {o['rp']:.2e} cm > 2 r_in"))
     mm, t_exit = path_check(run["vx"], run["vy"], t_end, dom, 2 * dx)
     if t_exit is not None:

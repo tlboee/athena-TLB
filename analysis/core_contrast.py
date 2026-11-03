@@ -99,13 +99,15 @@ for row, (kind, lst) in enumerate(RUNS.items()):
     for col, (key, ti) in enumerate(MEAS):
         ax = axes[row, col]
         ax.plot(tt - 18.0, 2755 * R_START / rid, "k--", lw=1.2, label="idealised χ ∝ 1/r")
+        ax.plot(tt - 18.0, 2755 * rid / R_START, ":", color="0.45", lw=1.5,
+                label="cloud density constant: χ₀ r / r_start")
         ax.axvline(0, color="grey", lw=0.6)
         ax.set_yscale("log"); ax.set_title(f"{kind}: {ti}", fontsize=9)
         if row == 1:
             ax.set_xlabel("t − t_peri [yr]")
     axes[row, 0].set_ylabel("cloud contrast ρ/ρ_eq(r)")
 axes[0, 0].legend(fontsize=7, title="resolution (cells, x)", title_fontsize=7)
-fig.suptitle("CC01: cloud contrast relative to the unperturbed atmosphere – which measure follows the idealised χ ∝ 1/r?",
+fig.suptitle("CC01: before pericentre the cloud keeps its density (dotted) instead of following pressure equilibrium (dashed)",
              fontsize=11)
 out = os.path.join(BASE, "core_contrast.png")
 fig.savefig(out, dpi=150)

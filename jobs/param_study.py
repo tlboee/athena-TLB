@@ -196,7 +196,8 @@ def make_runs():
     # --- Kuehlung (Townsend, Max' Implementierung): CC01, grosse Domain, PLM ---
     # Eigene Input-Datei, weil cooling/Lambda_fac nur so per Kommandozeile setzbar sind.
     cool_input = os.path.join(os.path.dirname(INPUT), "athinput.g2_cart_cc01_cool")
-    variants = [(True, 1.0, k) for k in (1, 2, 4)] + [(True, 0.1, 1), (True, 0.01, 1), (False, 1.0, 4)]
+    variants = ([(True, 1.0, k) for k in (1, 2, 4)] + [(True, 0.1, 1), (True, 0.01, 1), (False, 1.0, 4)]
+                + [(True, 0.1, 2), (True, 0.01, 2)])     # r_crit-Test: Lambda_fac = Dichte-Normierung
     for cool, fac, k in variants:
         r = json.loads(json.dumps(runs["ps_ref_big"]))
         nx1, nx2, mb = 1152 * k, NX2 * k, (64 if k == 1 else 128)

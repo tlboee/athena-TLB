@@ -75,3 +75,4 @@ analysis/*.png
 analysis/*.png
 .ipynb_checkpoints/
 Untitled*.ipynb
+build.log

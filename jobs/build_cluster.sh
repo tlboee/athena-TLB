@@ -11,7 +11,10 @@ if ! mpicxx --showme | grep -q "^g++"; then
 fi
 cd ~/athena
 [ "$1" = "clean" ] && make clean
-make -j 16 2>&1 | grep -iE "error" | head -5
+if ! make -j 16 > build.log 2>&1; then
+  echo "FEHLER: make fehlgeschlagen, alte Binary bleibt unveraendert (Details: ~/athena/build.log):"
+  grep -m10 -iE "error" build.log; return 1 2>/dev/null || exit 1
+fi
 cp bin/athena bin/athena_g2_cart
 if ldd bin/athena_g2_cart | grep -qiE "nvhpc|libnv"; then
   echo "FEHLER: Binary haengt an NVIDIA-Bibliotheken"; ldd bin/athena_g2_cart | grep -iE "nv"

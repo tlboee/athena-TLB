@@ -12,11 +12,20 @@ import matplotlib.pyplot as plt
 
 BASE = os.path.expanduser("~/athena/runs")
 YR, R0 = 3.156e7, 1.87e15
-MEAS = [("0.9", "Mixing: tracer > 0.9"), ("dl_1/3", "Dense stream: ρ/ρ_eq > χ₀/3")]
+MEAS = [("0.9", "Mixing: tracer > 0.9"), ("da_1/3", "Dense stream: ρ > ρ_cl0/3"),
+        ("sq", "Dense stream: ρ/ρ_eq > √χ₀")]
+# sqrt(chi0) aus vorhandenen Spalten: chi=10 -> ds (3.3), 100 -> dx_10, 1000 -> dx_30 (chi=1e4 fehlt)
+SQ = {1: "ds", 2: "dx_10", 3: "dx_30"}
 COL = {10: "C0", 100: "C1", 1000: "C2"}
 
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
 t = tab[(tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
+print("Masse in study_table.csv:", sorted(t["X"].unique()))
+dec = np.round(np.log10(t["chi"].astype(float)))
+sq = pd.concat([t[(dec == d) & (t["X"] == k)] for d, k in SQ.items()]).copy()
+print("Zeilen fuer sqrt(chi0):", {k: int(((dec == d) & (t["X"] == k)).sum()) for d, k in SQ.items()})
+sq["X"] = "sq"
+t = pd.concat([t, sq], ignore_index=True)
 
 def rfac(run):
     with open(os.path.join(BASE, run, "manifest.json")) as f:
@@ -29,7 +38,7 @@ var = t[t["run"].str.contains(r"_rp4_R")].copy()
 var["f"] = [rfac(r) for r in var["run"]]
 base["f"] = 1.0
 
-fig, axes = plt.subplots(1, 2, figsize=(13, 5.4), sharey=True, constrained_layout=True)
+fig, axes = plt.subplots(1, len(MEAS), figsize=(6.5 * len(MEAS), 5.4), sharey=True, constrained_layout=True)
 print(f"{'Lauf':28s} {'Mass':>5s} {'R/R0':>5s} {'x':>6s} {'y':>6s} {'Modell':>7s}")
 for ax, (key, title) in zip(axes, MEAS):
     b = base[base["X"] == key]

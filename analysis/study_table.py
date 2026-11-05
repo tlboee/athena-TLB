@@ -270,7 +270,7 @@ fig.savefig(out1, dpi=130)
 
 # --- Abbildung 2: t_50 gegen chi und r_p fuer drei Masse; 512 gefuellt, doppelte Aufloesung leer ---
 FIG_MEAS = [("0.9", "Mixing: tracer > 0.9"),
-            ("ds", "Dense stream: ρ/ρ_eq > min(10, χ₀/3)"),
+            ("dl_1/3", "Dense stream: ρ/ρ_eq > χ₀/3"),
             ("ek_1/3", "Entropy: K < 3^γ K₀")]
 gr = tab[tab["run"].str.startswith("g_") & ~tab["run"].str.contains("_R") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
 gr["x2"] = gr["run"].str.contains("_x2")

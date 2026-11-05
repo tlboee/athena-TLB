@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 BASE = os.path.expanduser("~/athena/runs")
 YR, R0 = 3.156e7, 1.87e15
-MEAS = [("0.9", "Mixing: tracer > 0.9"), ("ds", "Dense stream: ρ/ρ_eq > min(10, χ₀/3)")]
+MEAS = [("0.9", "Mixing: tracer > 0.9"), ("dl_1/3", "Dense stream: ρ/ρ_eq > χ₀/3")]
 COL = {10: "C0", 100: "C1", 1000: "C2"}
 
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))

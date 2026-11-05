@@ -54,17 +54,21 @@ print(f"{'chi':>6s} {'r_p':>8s} | {'Ort':>8s} {'T_cl':>8s} {'T_mix':>8s} {'t_coo
 rows = [(chi, rp) for chi in (10, 100, 1000, 1e4) for rp in VEL] + [(2755, 4e15)]
 for chi, rp in rows:
     vx, vy = VEL[rp]
+    rho_cl0 = state(R_START, chi)[1]                    # Wolkendichte am Start
     for where, r, v in [("Start", R_START, math.hypot(vx, vy) * 1e5), ("Perizent", rp, v_peri(vx, vy, rp))]:
         T_cl, rho_cl, rho_h, T_h, T_mix, tcm, tcl = state(r, chi)
-        tcc = math.sqrt(rho_cl / rho_h) * R_C / v / YR
+        R_cl = R_C * (rho_cl0 / rho_cl)**(1/3)          # isobare Kompression: Masse fest
+        tcc = math.sqrt(rho_cl / rho_h) * R_cl / v / YR
         print(f"{chi:6g} {rp:8.1e} | {where:>8s} {T_cl:8.2e} {T_mix:8.2e} {tcm:10.3g} {tcc:8.3g} "
               f"{tcm / tcc:8.3g} {tcl:10.3g}")
 
 print("\nCC01 (chi = 2755, T_cl = 1.0e4 K) mit Lambda_fac:")
 vx, vy = VEL[4e15]
+rho_cl0 = state(R_START, 2755)[1]                      # Wolkendichte am Start
 for fac in (0.01, 0.1, 1.0, 10.0):
     out = []
     for where, r, v in [("Start", R_START, math.hypot(vx, vy) * 1e5), ("Perizent", 4e15, v_peri(vx, vy, 4e15))]:
         T_cl, rho_cl, rho_h, T_h, T_mix, tcm, tcl = state(r, 2755, fac)
-        out.append(f"{where}: t_cool,mix/t_cc = {tcm / (math.sqrt(rho_cl / rho_h) * R_C / v / YR):.3g}")
+        R_cl = R_C * (rho_cl0 / rho_cl)**(1/3)          # isobare Kompression: Masse fest
+        out.append(f"{where}: t_cool,mix/t_cc = {tcm / (math.sqrt(rho_cl / rho_h) * R_cl / v / YR):.3g}")
     print(f"  Lambda_fac = {fac:5g}:  " + ",  ".join(out))

@@ -38,7 +38,7 @@ GAM = 5/3
 DF = {"1": 1.0, "1/3": 1/3, "1/10": 0.1}  # Dichteschwellen (Scannapieco & Brueggen 2015: F_1, F_1/3, F_1/10)
 DCOLS = [f"dl_{k}" for k in DF] + [f"da_{k}" for k in DF] + [f"ek_{k}" for k in DF]
 DX = {"10": 10.0, "30": 30.0}      # feste Schwellen rho/rho_eq(r) > DX (dichter Strom)
-DCOLS += [f"dx_{k}" for k in DX] + ["ds"]   # ds: dichter Strom, rho/rho_eq > min(10, chi0/3)
+DCOLS += [f"dx_{k}" for k in DX] + ["ds", "dq"]   # ds: dichter Strom, rho/rho_eq > min(10, chi0/3)
 TRAJ = ["xc", "yc", "vxc", "vyc", "chic"]   # Schwerpunkt, Geschwindigkeit, lokaler Kontrast (tr > 0.5)
 
 
@@ -96,6 +96,7 @@ def mx_curve(run_dir):
                     + [m[g["press"] / rho**GAM < f**(-GAM) * K0].sum() for f in DF.values()]
                     + [m[contrast > c].sum() for c in DX.values()]
                     + [m[contrast > min(10.0, chi0 / 3)].sum()]
+                    + [m[contrast > np.sqrt(chi0)].sum()]   # dq: dichter als Mischschicht, rho/rho_eq > sqrt(chi0)
                     + traj(g, m, tr, contrast, X, Y))
     df = pd.DataFrame(rows, columns=["t_yr", "m_tot"] + [f"m_{XN[x]}" for x in XS] + DCOLS + TRAJ)
     m0 = df["m_tot"].iloc[0]
@@ -270,7 +271,7 @@ fig.savefig(out1, dpi=130)
 
 # --- Abbildung 2: t_50 gegen chi und r_p fuer drei Masse; 512 gefuellt, doppelte Aufloesung leer ---
 FIG_MEAS = [("0.9", "Mixing: tracer > 0.9"),
-            ("dl_1/3", "Dense stream: ρ/ρ_eq > χ₀/3"),
+            ("dq", "Dense stream: ρ/ρ_eq > √χ₀"),
             ("ek_1/3", "Entropy: K < 3^γ K₀")]
 gr = tab[tab["run"].str.startswith("g_") & ~tab["run"].str.contains("_R") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
 gr["x2"] = gr["run"].str.contains("_x2")

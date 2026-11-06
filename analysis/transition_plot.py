@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 BASE = os.path.expanduser("~/athena/runs")
 YR, R_C = 3.156e7, 1.87e15
 V0 = math.hypot(794.59, 48.45) * 1e5
-MEAS = [("0.9", "Mixing: tracer > 0.9"), ("dl_1/3", "Dense stream: ρ/ρ_eq > χ₀/3")]
+MEAS = [("0.9", "Mixing: tracer > 0.9"), ("dq", "Dense stream: ρ/ρ_eq > √χ₀")]
 
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
 g = tab[tab["run"].str.startswith("g_") & ~tab["run"].str.contains("_R") & (tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()

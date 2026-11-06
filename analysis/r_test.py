@@ -13,19 +13,11 @@ import matplotlib.pyplot as plt
 BASE = os.path.expanduser("~/athena/runs")
 YR, R0 = 3.156e7, 1.87e15
 MEAS = [("0.9", "Mixing: tracer > 0.9"), ("da_1/3", "Dense stream: ρ > ρ_cl0/3"),
-        ("sq", "Dense stream: ρ/ρ_eq > √χ₀")]
-# sqrt(chi0) aus vorhandenen Spalten: chi=10 -> ds (3.3), 100 -> dx_10, 1000 -> dx_30 (chi=1e4 fehlt)
-SQ = {1: "ds", 2: "dx_10", 3: "dx_30"}
+        ("dq", "Dense stream: ρ/ρ_eq > √χ₀")]
 COL = {10: "C0", 100: "C1", 1000: "C2"}
 
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
 t = tab[(tab["Y"] == "1/2") & (tab["norm"] == "init")].copy()
-print("Masse in study_table.csv:", sorted(t["X"].unique()))
-dec = np.round(np.log10(t["chi"].astype(float)))
-sq = pd.concat([t[(dec == d) & (t["X"] == k)] for d, k in SQ.items()]).copy()
-print("Zeilen fuer sqrt(chi0):", {k: int(((dec == d) & (t["X"] == k)).sum()) for d, k in SQ.items()})
-sq["X"] = "sq"
-t = pd.concat([t, sq], ignore_index=True)
 
 def rfac(run):
     with open(os.path.join(BASE, run, "manifest.json")) as f:

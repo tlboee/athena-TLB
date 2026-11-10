@@ -1,7 +1,7 @@
 """Herkunft des kalten Gases (T < 3 T_cl0) in den CC01-Kuehllaeufen: Wolkengas (rho*tr) vs. Umgebungsgas (rho*(1-tr)).
 
 Normiert auf die anfaengliche Wolkenmasse sum(rho*tr) im 1. Snapshot (gleichmaessiges Gitter -> Zellsumme ~ Masse).
-T = P mu m_H / (rho k_B), mu = 0.62.  Cache: <lauf>/cold_origin.csv
+T = P mu m_H / (rho k_B), mu = 0.6139.  Cache: <lauf>/cold_origin.csv
 Aufruf (Notebook):  %run ~/athena/analysis/cold_origin.py
 """
 import os, sys
@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import g2_io
 
 BASE = os.path.expanduser("~/athena/runs")
-YR, MU, MH, KB = 3.156e7, 0.62, 1.6605e-24, 1.380648e-16
+YR, MU, MH, KB = 3.156e7, 0.6139, 1.6605e-24, 1.380648e-16
 T_END, T_PERI = 50.0, 18.0
 RUNS = [("512", "ps_ref_big_cool_t50"), ("1024", "ps_ref_big_cool_x2_t50"), ("2048", "ps_ref_big_cool_x4_t50")]
 COLS = {"512": "#440154", "1024": "#21918c", "2048": "#bddf26"}

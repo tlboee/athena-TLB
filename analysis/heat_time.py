@@ -1,6 +1,6 @@
 """Temperatur des Wolkenmaterials T_cl(t) und Heizzeit t_heat fuer CC01 (512/1024/2048, adiabatisch / Kuehlung).
 
-T = P mu m_H / (rho k_B), mu = 0.62; Gewicht w = rho * tr. Normiert auf T_cl0 = gewichteter Median im 1. Snapshot.
+T = P mu m_H / (rho k_B), mu = 0.6139; Gewicht w = rho * tr. Normiert auf T_cl0 = gewichteter Median im 1. Snapshot.
 T_wmed: massengewichteter Median von T;  f_cold: Massenanteil mit T < 3 T_cl0.
 t_heat: erster Zeitpunkt mit T_wmed > 3 T_cl0.   Cache: <lauf>/heat.csv
 Aufruf (Notebook):  %run ~/athena/analysis/heat_time.py
@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import g2_io
 
 BASE = os.path.expanduser("~/athena/runs")
-YR, MU, MH, KB = 3.156e7, 0.62, 1.6605e-24, 1.380648e-16
+YR, MU, MH, KB = 3.156e7, 0.6139, 1.6605e-24, 1.380648e-16
 T_END, T_PERI = 50.0, 18.0          # t_peri CC01 ~ 18 yr (wie kh_plot.py)
 RUNS = {"adiabatic": [("512", "ps_ref_big"), ("1024", "ps_ref_big_x2_t50"), ("2048", "ps_ref_big_x4_t50")],
         "with cooling": [("512", "ps_ref_big_cool_t50"), ("1024", "ps_ref_big_cool_x2_t50"),

@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import g2_io
 
 BASE = os.path.expanduser("~/athena/runs")
-YR, MU, MH, KB, AU = 3.156e7, 0.62, 1.6605e-24, 1.380648e-16, 1.496e13
+YR, MU, MH, KB, AU = 3.156e7, 0.6139, 1.6605e-24, 1.380648e-16, 1.496e13
 RUN, TIMES, T_CL0 = "ps_ref_big_x4_t50", (16.0, 17.0, 18.0), 1.03e4
 
 def key(s, cands, what):

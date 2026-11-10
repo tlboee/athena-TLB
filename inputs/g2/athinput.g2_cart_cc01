@@ -9,12 +9,12 @@ problem_id = g2_cart
 <output1>
 file_type  = tab
 variable   = prim
-dt         = 1.578e7       # alle 0.5 yr
+dt         = 1.578e7       # alle 0.5 yr (param_study.py setzt 1 yr)
 
 <time>
 cfl_number = 0.3
 nlim       = -1
-tlim       = 6.312e8       # 20 yr: 1995.5 -> 2015.5 (Perizentrum 2013.5)
+tlim       = 6.312e8       # 20 yr: 1995.5 -> 2015.5 (Perizentrum 2013.5) (param_study.py setzt tlim je Lauf)
 integrator = rk3           # wie Burkert+12
 xorder     = 3             # PPM (parabolisch), braucht --nghost>=3
 ncycle_out = 100

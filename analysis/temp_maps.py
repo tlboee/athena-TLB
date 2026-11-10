@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import g2_io
 
 BASE = os.path.expanduser("~/athena/runs")
-YR, MU, MH, KB, AU = 3.156e7, 0.62, 1.6605e-24, 1.380648e-16, 1.496e13
+YR, MU, MH, KB, AU = 3.156e7, 0.6139, 1.6605e-24, 1.380648e-16, 1.496e13
 TIMES = (17.0, 18.0, 19.0)
 RUNS = [("adiabatic", "ps_ref_big_x4_t50"), ("with cooling", "ps_ref_big_cool_x4_t50")]
 T_CL0 = 1.03e4

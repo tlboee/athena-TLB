@@ -44,7 +44,7 @@ def rfac(run):
 
 tab = pd.read_csv(os.path.join(BASE, "study_table.csv"))
 tab = tab[(tab["Y"] == "1/2") & (tab["norm"] == "init")]
-keep = tab["run"].str.match(r"^g_chi[0-9e]+_rp\d+(_big)?$") | tab["run"].str.contains(r"_rp4_R") | (tab["run"] == "ps_ref_big")
+keep = tab["run"].str.match(r"^g_chi[0-9e]+_rp\d+(_big)?$") | tab["run"].str.contains(r"_rp\d+_R") | (tab["run"] == "ps_ref_big")
 tab = tab[keep]
 rows = []
 for run, sub in tab.groupby("run"):

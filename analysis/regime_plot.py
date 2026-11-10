@@ -16,7 +16,9 @@ STY = {"vorher": ("o", "#2f6db3", "destroyed before pericentre"),
        "überlebt": ("^", "#1d2733", "survives pericentre")}
 plt.rcParams.update({"font.size": 15})
 fig, ax = plt.subplots(figsize=(16, 7))
-ax.fill_between([3.0e15, 5.3e15], 11, 17, color="#1d2733", alpha=0.10, lw=0, zorder=1)
+import numpy as np
+rr = np.logspace(np.log10(2.6e15), np.log10(5.2e16), 50)
+ax.plot(rr, 15 * (rr / 4e15)**-0.5, color="#1d2733", ls=":", lw=2, zorder=2)   # Ueberlebensgrenze (10.11.)
 done = set()
 for _, r in df.iterrows():
     xp = r["rp"] * 10**OFF.get(round(r["R_R0"], 2), 0.0)
@@ -31,7 +33,7 @@ for _, r in df.iterrows():
     done.add(r["regime"])
 ax.axhline(1, color="#2f6db3", ls="--", lw=1.5)
 ax.text(2.75e15, 1.07, "α t_cc = t_peri", color="#2f6db3", fontsize=14)
-ax.text(5.6e15, 13.3, "survival threshold x ≈ 11–17\nat r_p = 4×10¹⁵ cm", color="#1d2733", fontsize=13, va="center")
+ax.text(9.2e15, 5.2, "survival boundary (dotted)\nx ≈ 15 · (r_p / 4×10¹⁵ cm)^(−1/2)", color="#1d2733", fontsize=13, va="top")
 ax.set_xscale("log"); ax.set_yscale("log")
 ax.set_xticks([4e15, 8e15, 1.6e16, 3.2e16]); ax.set_xticklabels(["4×10¹⁵", "8×10¹⁵", "1.6×10¹⁶", "3.2×10¹⁶"])
 ax.minorticks_off(); ax.set_xlim(2.6e15, 5.2e16); ax.set_ylim(0.15, 60)

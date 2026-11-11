@@ -14,7 +14,8 @@ import pandas as pd
 BASE = os.path.expanduser("~/athena/runs")
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "utils", "townsend_cooling.hpp")
 ALPHA = 3.85   # Mixing-Mass (tracer > 0.9), 512, Median der chi = 10-Laeufe; sqrt(chi0) fuer chi = 10 geometrisch verzerrt
-G_RES = ([6.75, 13.5, 27.0], [1.0, 1.369, 1.502])   # alpha(N) / alpha(6.75 Zellen/R) aus alpha_conv.py (chi = 10, r_p = 4e15)
+G_RES = ([6.75, 13.5, 27.0], [1.0, 1.49, 1.63])   # 13.5: Mittel aus R (1.37), R/2 (1.60), Median vier r_p (1.50);
+                                                    # 27: x 1.10 wie bei R (alpha_conv.py), Stand 11.11.   # alpha(N) / alpha(6.75 Zellen/R) aus alpha_conv.py (chi = 10, r_p = 4e15)
 R_C, R0_PROF, RHO0, T0 = 1.87e15, 1.0e16, 1.702e-21, 2.128e8
 R_START = math.hypot(-7.22e16, 2.21e16)
 g, X, Z, mh, kb = 5 / 3, 0.7, 0.02, 1.6605e-24, 1.380648e-16

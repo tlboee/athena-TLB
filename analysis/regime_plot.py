@@ -18,9 +18,9 @@ plt.rcParams.update({"font.size": 15})
 fig, ax = plt.subplots(figsize=(16, 7))
 import numpy as np
 rr = np.logspace(np.log10(2.6e15), np.log10(5.2e16), 50)
-ax.plot(rr, 10.5 * (rr / 4e15)**-0.7, color="#1d2733", ls=":", lw=1.5, zorder=2)
+ax.plot(rr, 11.5 * (rr / 4e15)**-0.7, color="#1d2733", ls=":", lw=1.5, zorder=2)
 for rp0 in (4e15, 8e15, 1.6e16, 3.2e16):              # Grenze am tatsaechlichen r_p, ueber die Breite der R-Varianten
-    xc = 10.5 * (rp0 / 4e15)**-0.7
+    xc = 11.5 * (rp0 / 4e15)**-0.7
     ax.plot([rp0 * 10**-0.11, rp0 * 10**0.11], [xc, xc], color="#1d2733", lw=2.5, zorder=2, solid_capstyle="butt")   # Ueberlebensgrenze (10.11.)
 done = set()
 for _, r in df.iterrows():
@@ -41,7 +41,7 @@ for _, r in df.iterrows():
     done.add(r["regime"])
 ax.axhline(1, color="#2f6db3", ls="--", lw=1.5)
 ax.text(2.75e15, 1.07, "α t_cc = t_peri", color="#2f6db3", fontsize=14)
-ax.text(9.5e15, 0.8, "survival boundary (dotted; bar = value at each r_p)\nx ≈ 10.5 · (r_p / 4×10¹⁵ cm)^(−0.7)", color="#1d2733", fontsize=13, va="top")
+ax.text(9.5e15, 0.8, "survival boundary (dotted; bar = value at each r_p)\nx ≈ 11.5 · (r_p / 4×10¹⁵ cm)^(−0.7)", color="#1d2733", fontsize=13, va="top")
 ax.set_xscale("log"); ax.set_yscale("log")
 ax.set_xticks([4e15, 8e15, 1.6e16, 3.2e16]); ax.set_xticklabels(["4×10¹⁵", "8×10¹⁵", "1.6×10¹⁶", "3.2×10¹⁶"])
 ax.minorticks_off(); ax.set_xlim(2.6e15, 5.2e16); ax.set_ylim(0.1, 40)

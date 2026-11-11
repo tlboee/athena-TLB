@@ -221,7 +221,8 @@ def make_runs():
     # Gitter so gewaehlt, dass die Wolke mindestens 6.7 Zellen pro Radius hat.
     combos = [(b, f, k) for b in ("g_chi10_rp4", "g_chi100_rp4", "g_chi1000_rp4")
               for f, k in [(0.25, 4), (0.5, 2), (2.0, 1), (4.0, 1)]]
-    combos += [("g_chi1000_rp32", 0.5, 2), ("g_chi1000_rp16", 2.0, 1), ("g_chi1000_rp8", 2.0, 1)]   # Ueberlebensgrenze bei grossem r_p (10.11.)
+    combos += [("g_chi1000_rp32", 0.5, 2), ("g_chi1000_rp16", 2.0, 1), ("g_chi1000_rp8", 2.0, 1),
+               ("g_chi10_rp4", 1.0, 4)]   # Konvergenz von alpha: chi = 10 bei ~27 Zellen pro Radius (10.11.)   # Ueberlebensgrenze bei grossem r_p (10.11.)
     for base, f, k in combos:
             r = json.loads(json.dumps(runs[base]))
             nx1, nx2, mb = r.get("nx1", NX1) * k, r.get("nx2", NX2) * k, (64 if k == 1 else 128)

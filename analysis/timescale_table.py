@@ -64,9 +64,12 @@ for run, sub in tab.groupby("run"):
     alpha = ALPHA * np.interp(np.log2(N_R), np.log2(G_RES[0]), G_RES[1])
     x, plat = alpha * t_cc / r["t_peri"], 1 + r["t_tid_peri"] / r["t_peri"]
     y = t50["dq"] / r["t_peri"]
-    y_mix = t50["0.9"] / r["t_peri"]   # "vorher" ueber das Mixing-Mass (sqrt(chi0) fuer chi = 10 geometrisch verzerrt)
-    reg = ("vorher" if np.isfinite(y_mix) and y_mix < 0.85 else "überlebt" if not np.isfinite(y)
-           else "Perizentrum" if y <= plat + 0.3 else "überlebt")
+    y_mix = t50["0.9"] / r["t_peri"]
+    # Mass je Lauf (Max, 12.11.): chi0 >= 100 -> rho/rho_eq > sqrt(chi0); chi0 < 100 -> Tracer > 0.9
+    # (sqrt(chi0) ist fuer chi = 10 geometrisch verzerrt, da sqrt(10) ~ 10/3)
+    ys = y if chi >= 100 else y_mix
+    reg = ("überlebt" if not np.isfinite(ys) else "vorher" if ys < 0.85
+           else "Perizentrum" if ys <= plat + 0.3 else "überlebt")
     rows.append(dict(run=run, chi=chi, rp=r["rp"], R_R0=f, t_peri=r["t_peri"], t_tid=r["t_tid_peri"], t_cc=t_cc,
                      t_KH=r["t_KH0"] * f, t_sc=t_sc, t_cool_cl=tcl, t_cool_mix=tcm, r_rcrit=t_cc / tcm, N_R=N_R, alpha=alpha, x=x,
                      model="vorher" if x < 1 else "Perizentrum", t50_mix=t50["0.9"], t50_dq=t50["dq"], y_dq=y,

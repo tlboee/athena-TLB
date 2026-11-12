@@ -13,8 +13,13 @@ MODS=$(python3 -c "import ast; t = ast.parse(open('$ATH/jobs/param_study.py').re
 module purge; module load $MODS; module unload toolkit/nvidia-hpc-sdk devel/cuda 2>/dev/null || true
 DST=$ATH/runs/wt_L${FAC}${SUFFIX}
 mkdir -p $DST && cd $DST
-printf "# RUN_INFO: %s\nWindkanal, Lambda_fac = %s, Eingabe inputs/g2/athinput.g2_windtunnel, Binary-Stand %s, Job %s, %s\n" \
+[ -n "$RST" ] || printf "# RUN_INFO: %s\nWindkanal, Lambda_fac = %s, Eingabe inputs/g2/athinput.g2_windtunnel, Binary-Stand %s, Job %s, %s\n" \
   "$(basename $DST)" "$FAC" "$(cd $ATH && git log -1 --format='%h %ad' --date=short)" "$SLURM_JOB_ID" "$(date +%F)" > RUN_INFO.md
-mpirun -np $SLURM_NTASKS $ATH/bin/athena_g2_cart -i $ATH/inputs/g2/athinput.g2_windtunnel -d . \
-    problem/Lambda_fac=$FAC ${TLIM:+time/tlim=$TLIM}
+if [ -n "$RST" ]; then            # Fortsetzung aus Restart-Datei im Laufordner
+  echo "Fortsetzung aus $RST, Job $SLURM_JOB_ID, $(date +%F)" >> RUN_INFO.md
+  mpirun -np $SLURM_NTASKS $ATH/bin/athena_g2_cart -r $RST -d .
+else
+  mpirun -np $SLURM_NTASKS $ATH/bin/athena_g2_cart -i $ATH/inputs/g2/athinput.g2_windtunnel -d . \
+      problem/Lambda_fac=$FAC ${TLIM:+time/tlim=$TLIM}
+fi
 echo "fertig $(date)"

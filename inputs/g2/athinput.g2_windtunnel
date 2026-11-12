@@ -1,0 +1,72 @@
+<comment>
+problem   = Windkanal (bewegte Wolke in homogenem heissem Medium) mit Kuehlung, Test von Gronke & Oh (2018)
+reference = CC01-Werte am Start: rho_amb = rho_hot(r_start), T_amb = T_hot(r_start); Wolke 1e4 K, Druckgleichgewicht
+configure = --prob=g2_cartesian --coord=cartesian --flux=hllc --nscalars=1 --nghost=4 -mpi
+
+<job>
+problem_id = g2_cart
+
+<output1>
+file_type  = hdf5
+variable   = prim
+dt         = 1.2624e8      # 4 yr
+
+<output2>
+file_type  = rst
+dt         = 3.156e9       # 100 yr
+
+<output3>
+file_type  = hst
+dt         = 1.578e7       # 0.5 yr
+
+<time>
+cfl_number = 0.3
+nlim       = -1
+tlim       = 1.2308e10     # 390 yr ~ 10 t_cc
+integrator = rk3
+xorder     = 2             # PLM wie in den G2-Laeufen
+ncycle_out = 1000
+
+<mesh>
+nx1        = 4608          # 8 Zellen pro Wolkenradius (dx = 2.34e14 cm)
+x1min      = -1.87e16      # -10 R
+x1max      = 1.0585e18     # 566 R
+ix1_bc     = outflow
+ox1_bc     = outflow
+nx2        = 384
+x2min      = -4.488e16     # -24 R
+x2max      = 4.488e16      # +24 R
+ix2_bc     = outflow
+ox2_bc     = outflow
+nx3        = 1
+x3min      = -1.0e15
+x3max      = 1.0e15
+ix3_bc     = periodic
+ox3_bc     = periodic
+
+<meshblock>
+nx1        = 64
+nx2        = 64
+nx3        = 1
+
+<hydro>
+gamma      = 1.6666666667
+dfloor     = 1.0e-30
+sfloor     = 0.0
+
+<problem>
+test_cool  = true          # kein BH, keine Senke, homogene Umgebung (auch fuer die Relaxation)
+cooling    = true
+Lambda_fac = 1.0           # pro Lauf per Kommandozeile: 1 / 0.1 / 0.01
+rho_amb    = 2.2534e-22    # rho_hot(r_start) = 1.702e-21 * 1e16 / 7.553e16
+T_amb      = 2.818e7       # T_hot(r_start)   = 2.128e8 * 1e16 / 7.553e16
+T_cloud    = 1.0e4
+rho_cloud  = 0.0           # 0: aus Druckgleichgewicht
+R_cloud    = 1.87e15
+x_cloud    = 0.0
+y_cloud    = 0.0
+vx_cloud   = 800.0         # km/s, Mach ~ 1
+vy_cloud   = 0.0
+mu         = 0.6139
+tr_thresh  = 1.0e-4
+T_floor    = 1.0e4

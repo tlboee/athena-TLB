@@ -20,8 +20,10 @@ CASES = [("6.4", "1", "ps_ref_big_cool_x2_t50", "#c0392b"), ("0.64", "0.1", "ps_
 def series(run):
     d = os.path.join(BASE, run)
     cache = os.path.join(d, "wt_cold.csv")
-    if os.path.exists(cache) and os.path.isfile(os.path.join(d, "g2_cart.final.rst")):
-        return pd.read_csv(cache)
+    if os.path.exists(cache):
+        c = pd.read_csv(cache)
+        if c["t_yr"].max() >= 389.0:
+            return c
     rows, T0, M0 = [], None, None
     for n in g2_io.snapshot_numbers(d):
         t, s = g2_io.load_snapshot(d, n)
@@ -35,7 +37,7 @@ def series(run):
         print(f"  {run}: t = {t/YR:6.1f} yr", end="\r")
     print()
     df = pd.DataFrame(rows, columns=["t_yr", "m_cold_cloud", "m_cold_amb", "m_cloud_tot"])
-    if os.path.isfile(os.path.join(d, "g2_cart.final.rst")):
+    if df["t_yr"].max() >= 389.0:               # nur vollstaendige Laeufe cachen (final.rst entsteht auch bei Abbruch)
         df.to_csv(cache, index=False)
     return df
 

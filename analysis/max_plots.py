@@ -64,15 +64,38 @@ def cold_series(run, ref=None):
 runs = [("adiabatic", "ps_ref_big_x2_t50", "k"),
         ("R/2, adiabatic", "ps_ref_big_R0.5_x2_t50", "0.55"),
         ("R/2, r/r_crit ≈ 3.2  (Λ × 1)", "ps_ref_big_cool_R0.5_x2_t50", "#6a3d9a"),
+        ("R/4, adiabatic", "ps_ref_big_R0.25_x4_t50", "0.8"),
+        ("R/4, r/r_crit ≈ 1.6  (Λ × 1)", "ps_ref_big_cool_R0.25_x4_t50", "#cab2d6"),
         ("r/r_crit ≈ 0.064  (Λ × 0.01)", find("ps_ref_big_cool_L0.01_x2*"), "#2f6db3"),
         ("r/r_crit ≈ 0.64  (Λ × 0.1)", find("ps_ref_big_cool_L0.1_x2*"), "#d9822b"),
         ("r/r_crit ≈ 6.4  (Λ × 1)", find("ps_ref_big_cool_x2*"), "#c0392b")]
 fig, ax = plt.subplots(figsize=(9, 5.5), constrained_layout=True)
+dfs = {}
 for lab, run, c in runs:
     if run is None:
         print(f"{lab}: Lauf nicht gefunden"); continue
     df = cold_series(run)
+    dfs[run] = df
     ax.plot(df["t_yr"] / T_CC, df["m_cold"], color=c, label=f"{lab}  [{run}]")
+def accreted(run):
+    """Akkretierter Anteil der Wolkenmasse wie in mass_budget.py: Verlust an Wolkengas (Spalte 11),
+    aufgeteilt nach M_sink / (M_sink + M_buffer + |M_reset|) (Spalten 12-14)."""
+    h = np.loadtxt(os.path.join(BASE, run, "g2_cart.hst"))
+    t, tr, sink, buf, res = h[:, 0] / YR, h[:, 10], h[:, 11], h[:, 12], h[:, 13]
+    loss, den = tr[0] - tr, sink + buf + np.abs(res)
+    return t, np.where(den > 0, loss * sink / den, 0.0) / tr[0]
+
+red = find("ps_ref_big_cool_x2*")
+if red in dfs:
+    ta, acc = accreted(red)
+    d = dfs[red]
+    acc_i = np.interp(d["t_yr"], ta, acc)
+    ax.plot(ta / T_CC, acc, color="#c0392b", ls=":", lw=1.5, label="r/r_crit ≈ 6.4: accreted (in sink)")
+    ax.plot(d["t_yr"] / T_CC, d["m_cold"] + acc_i, color="#c0392b", ls="-.", lw=1.2, label="r/r_crit ≈ 6.4: cold + accreted")
+    print("\nr/r_crit = 6.4:  t [yr]   kalt   akkretiert   Summe")
+    for tt in (18, 22, 26, 28, 32, 40, 50):
+        i = int(np.argmin(np.abs(d["t_yr"] - tt)))
+        print(f"               {d['t_yr'][i]:6.1f}  {d['m_cold'][i]:6.3f}  {acc_i[i]:10.3f}  {d['m_cold'][i] + acc_i[i]:6.3f}")
 ax.axvline(T_PERI / T_CC, color="k", ls=":", lw=0.8)
 ax.set_xlabel("t / t_cc   (t_cc = 39 yr)"); ax.set_ylabel("m(T < 3 T_cl0) / m_0")
 ax.set_title("CC01 at 1024: cold mass vs. time for different r/r_crit (dotted: pericentre)")

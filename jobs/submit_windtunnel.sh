@@ -20,6 +20,6 @@ if [ -n "$RST" ]; then            # Fortsetzung aus Restart-Datei im Laufordner
   mpirun -np $SLURM_NTASKS $ATH/bin/athena_g2_cart -r $RST -d .
 else
   mpirun -np $SLURM_NTASKS $ATH/bin/athena_g2_cart -i $ATH/inputs/g2/athinput.g2_windtunnel -d . \
-      problem/Lambda_fac=$FAC ${TLIM:+time/tlim=$TLIM}
+      problem/Lambda_fac=$FAC ${TLIM:+time/tlim=$TLIM} $EXTRA
 fi
 echo "fertig $(date)"

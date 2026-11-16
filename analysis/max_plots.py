@@ -39,7 +39,8 @@ def find(pattern):
     m = [d for d in m if not d.endswith("_fine")]
     return os.path.basename(m[0]) if m else None
 
-def cold_series(run, ref="ps_ref_big_x2_t50"):
+def cold_series(run, ref=None):
+    ref = ref or run                      # auf die eigene Anfangsmasse normieren
     d = os.path.join(BASE, run)
     cache = os.path.join(d, "cold_all.csv")
     if os.path.exists(cache):
@@ -61,6 +62,8 @@ def cold_series(run, ref="ps_ref_big_x2_t50"):
     return df
 
 runs = [("adiabatic", "ps_ref_big_x2_t50", "k"),
+        ("R/2, adiabatic", "ps_ref_big_R0.5_x2_t50", "0.55"),
+        ("R/2, r/r_crit ≈ 3.2  (Λ × 1)", "ps_ref_big_cool_R0.5_x2_t50", "#6a3d9a"),
         ("r/r_crit ≈ 0.064  (Λ × 0.01)", find("ps_ref_big_cool_L0.01_x2*"), "#2f6db3"),
         ("r/r_crit ≈ 0.64  (Λ × 0.1)", find("ps_ref_big_cool_L0.1_x2*"), "#d9822b"),
         ("r/r_crit ≈ 6.4  (Λ × 1)", find("ps_ref_big_cool_x2*"), "#c0392b")]

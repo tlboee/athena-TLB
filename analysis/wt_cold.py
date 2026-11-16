@@ -17,12 +17,15 @@ T_CC_G2, T_PERI = 39.1, 18.0
 CASES = [("6.4", "1", "ps_ref_big_cool_x2_t50", "#c0392b"), ("0.64", "0.1", "ps_ref_big_cool_L0.1_x2_t50", "#d9822b"),
          ("0.064", "0.01", "ps_ref_big_cool_L0.01_x2_t50", "#2f6db3")]
 
+def T_END_OF(run):
+    return 263.0 if run.endswith("_go18") else 390.0
+
 def series(run):
     d = os.path.join(BASE, run)
     cache = os.path.join(d, "wt_cold.csv")
     if os.path.exists(cache):
         c = pd.read_csv(cache)
-        if c["t_yr"].max() >= 389.0:
+        if c["t_yr"].max() >= 0.98 * T_END_OF(run):
             return c
     rows, T0, M0 = [], None, None
     for n in g2_io.snapshot_numbers(d):
@@ -37,11 +40,11 @@ def series(run):
         print(f"  {run}: t = {t/YR:6.1f} yr", end="\r")
     print()
     df = pd.DataFrame(rows, columns=["t_yr", "m_cold_cloud", "m_cold_amb", "m_cloud_tot"])
-    if df["t_yr"].max() >= 389.0:               # nur vollstaendige Laeufe cachen (final.rst entsteht auch bei Abbruch)
+    if df["t_yr"].max() >= 0.98 * T_END_OF(run):               # nur vollstaendige Laeufe cachen (final.rst entsteht auch bei Abbruch)
         df.to_csv(cache, index=False)
     return df
 
-fig, axes = plt.subplots(1, 2, figsize=(15, 5.5), sharey=True, constrained_layout=True)
+fig, axes = plt.subplots(1, 3, figsize=(21, 5.5), constrained_layout=True)
 print(f"{'r/r_crit':>8s} {'t/t_cc':>6s} {'kalt gesamt':>11s} {'davon Umgebung':>14s}")
 for rr, fac, g2run, c in CASES:
     run = f"wt_L{fac}"
@@ -67,6 +70,24 @@ for ax in axes:
     ax.set_xlabel("t / t_cc   (t_cc ≈ 39 yr)")
 axes[0].set_ylabel("m(T < 3 T_cl0) / m_0")
 axes[0].legend(fontsize=8); axes[1].legend(fontsize=9)
+# Drittes Feld: Max' Parameter (Gronke & Oh 2018): chi = 100, Mach 1.5, T_hot = 1e6 K, t_cc = 26.3 yr
+T_CC_GO = 10.0 * 1.87e15 / 2.254e7 / YR
+for rr, fac, c in (("244", "1", "#c0392b"), ("2.4", "0.01", "#d9822b"), ("0.24", "0.001", "#2f6db3")):
+    run = f"wt_L{fac}_go18"
+    if not os.path.isdir(os.path.join(BASE, run)):
+        print(f"{run} fehlt"); continue
+    df = series(run)
+    tot = df["m_cold_cloud"] + df["m_cold_amb"]
+    axes[2].plot(df["t_yr"] / T_CC_GO, tot, color=c, label=f"r/r_crit ≈ {rr}: all cold gas")
+    axes[2].plot(df["t_yr"] / T_CC_GO, df["m_cold_cloud"], color=c, ls="--", lw=1, label=f"r/r_crit ≈ {rr}: cloud gas only")
+    for tt in (1, 3, 5, 10):
+        if df["t_yr"].max() / T_CC_GO >= tt:
+            i = int(np.argmin(np.abs(df["t_yr"] / T_CC_GO - tt)))
+            print(f"GO18 {rr:>6s} {tt:6d} {tot[i]:11.3f} {df['m_cold_amb'][i]:14.3f}")
+axes[2].axhline(1, color="0.6", lw=0.8)
+axes[2].set_title("Wind tunnel, Gronke & Oh 2018 setup (χ = 100, Mach 1.5, T_hot = 10⁶ K)")
+axes[2].set_xlabel("t / t_cc   (t_cc ≈ 26 yr)"); axes[2].set_ylabel("m(T < 3 T_cl0) / m_0")
+axes[2].legend(fontsize=8)
 fig.savefig(os.path.join(BASE, "wt_cold.png"), dpi=150)
 plt.show()
 print("Gespeichert: runs/wt_cold.png")

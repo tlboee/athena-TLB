@@ -22,7 +22,8 @@ COOL = [("R, Λ×1",      "ps_ref_big_cool_x2_t50",       12.5, 6.4,   "ps_ref_b
         ("R/2, Λ×1",    "ps_ref_big_cool_R0.5_x2_t50",  4.2,  3.2,   "ps_ref_big_R0.5_x2_t50",  "#6a3d9a"),
         ("R/4, Λ×1",    "ps_ref_big_cool_R0.25_x4_t50", 2.1,  1.6,   "ps_ref_big_R0.25_x4_t50", "#b39ddb"),
         ("R/2, Λ×10",   "ps_ref_big_cool_L10_R0.5_x2_t50", 4.2, 32.0, None,                     "#e7298a"),
-        ("0.75R, Λ×1",  "ps_ref_big_cool_R0.75_x2_t50", 8.1,  4.8,   "ps_ref_big_R0.75_x2_t50", "#1b9e77")]
+        ("0.75R, Λ×1",  "ps_ref_big_cool_R0.75_x2_t50", 8.1,  4.8,   "ps_ref_big_R0.75_x2_t50", "#1b9e77"),
+        ("0.85R, Λ×1",  "ps_ref_big_cool_R0.85_x2_t50", 9.8,  5.4,   "ps_ref_big_R0.85_x2_t50", "#e6ab02")]
 
 def cold_last(run):
     """Kalte Masse m(T < 3 T_cl0, tr > 1e-4)/m0 im letzten Snapshot (Ersatz, wenn cold_all.csv fehlt)."""

@@ -236,6 +236,24 @@ def make_runs():
             r["info"] = r["info"] + f" | R = {f:g} R_0, {k}-fache Aufloesung"
             runs[f"{name}_R{f:g}_x{k}"] = r
 
+    # --- Bestaetigung des Kuehlkriteriums (17.11.): R/2 mit starker Kuehlung, 0.75 R knapp unter der Grenze ---
+    for cool, fac, f, k in [(True, 10.0, 0.5, 2), (True, 1.0, 0.75, 2), (False, 1.0, 0.75, 2)]:
+        r = json.loads(json.dumps(runs["ps_ref_big"]))
+        nx1, nx2, mb = 1152 * k, NX2 * k, 128
+        r["params"] = dict(r["params"], **{"problem/R_cloud": f"{f * R_CLOUD:.4g}",
+                                             "mesh/nx1": nx1, "mesh/nx2": nx2,
+                                             "meshblock/nx1": mb, "meshblock/nx2": mb})
+        r["nx1"], r["nx2"], r["mb"], r["R_cloud"] = nx1, nx2, mb, f * R_CLOUD
+        r["timeout"] = {2: 10800, 4: 21000}[k]
+        name = "ps_ref_big"
+        if cool:
+            r["input"] = cool_input
+            r["params"]["problem/Lambda_fac"] = fac
+            name += "_cool" + ("" if fac == 1.0 else f"_L{fac:g}")
+            r["info"] = r["info"] + f" | Kuehlung, Lambda_fac = {fac:g}"
+        r["info"] = r["info"] + f" | R = {f:g} R_0, {k}-fache Aufloesung"
+        runs[f"{name}_R{f:g}_x{k}"] = r
+
     # --- Test des Uebergangs ueber den Wolkenradius: t_cc ~ R, t_tid und t_peri unabhaengig von R ---
     # Gitter so gewaehlt, dass die Wolke mindestens 6.7 Zellen pro Radius hat.
     combos = [(b, f, k) for b in ("g_chi10_rp4", "g_chi100_rp4", "g_chi1000_rp4")

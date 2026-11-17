@@ -20,7 +20,27 @@ COOL = [("R, Λ×1",      "ps_ref_big_cool_x2_t50",       12.5, 6.4,   "ps_ref_b
         ("R, Λ×0.1",    "ps_ref_big_cool_L0.1_x2_t50",  12.5, 0.64,  None,                      "#d9822b"),
         ("R, Λ×0.01",   "ps_ref_big_cool_L0.01_x2_t50", 12.5, 0.064, None,                      "#2f6db3"),
         ("R/2, Λ×1",    "ps_ref_big_cool_R0.5_x2_t50",  4.2,  3.2,   "ps_ref_big_R0.5_x2_t50",  "#6a3d9a"),
-        ("R/4, Λ×1",    "ps_ref_big_cool_R0.25_x4_t50", 2.1,  1.6,   "ps_ref_big_R0.25_x4_t50", "#b39ddb")]
+        ("R/4, Λ×1",    "ps_ref_big_cool_R0.25_x4_t50", 2.1,  1.6,   "ps_ref_big_R0.25_x4_t50", "#b39ddb"),
+        ("R/2, Λ×10",   "ps_ref_big_cool_L10_R0.5_x2_t50", 4.2, 32.0, None,                     "#e7298a"),
+        ("0.75R, Λ×1",  "ps_ref_big_cool_R0.75_x2_t50", 8.1,  4.8,   "ps_ref_big_R0.75_x2_t50", "#1b9e77")]
+
+def cold_last(run):
+    """Kalte Masse m(T < 3 T_cl0, tr > 1e-4)/m0 im letzten Snapshot (Ersatz, wenn cold_all.csv fehlt)."""
+    d = os.path.join(BASE, run); cache = os.path.join(d, "cold_seed.csv")
+    if os.path.exists(cache):
+        return float(pd.read_csv(cache)["m_cold"].iloc[-1])
+    ns = g2_io.snapshot_numbers(d)
+    vals = []
+    for n in (ns[0], ns[-1]):
+        t, s = g2_io.load_snapshot(d, n)
+        rho, tr = s["rho"], np.clip(s["r0"], 0, 1)
+        T = s["press"] * 0.6139 * 1.6605e-24 / (rho * 1.380648e-16)
+        vals.append((t / YR, rho, tr, T))
+    T0 = float(np.median(vals[0][3][vals[0][2] > 0.99])); m0 = float((vals[0][1] * vals[0][2]).sum())
+    t1, rho, tr, T = vals[1]
+    mc = float((rho * tr)[(tr > 1e-4) & (T < 3 * T0)].sum() / m0)
+    pd.DataFrame([[t1, mc]], columns=["t", "m_cold"]).to_csv(cache, index=False)
+    return mc
 
 def series(run):
     d = os.path.join(BASE, run)
@@ -56,7 +76,7 @@ for lab, run, x, rr, adia, c in COOL:
         a = series(adia); axes[0].plot(a["t"], a["dense"], color=c, ls="--", lw=1, label=f"{lab.split(',')[0]} (adiabatic)")
         ma = (a["t"] >= T_PERI) & (a["t"] <= 25); amin = float(a["dense"][ma].min())
     p = os.path.join(BASE, run, "cold_all.csv")
-    cold50 = float(pd.read_csv(p)["m_cold"].iloc[-1]) if os.path.exists(p) else np.nan
+    cold50 = float(pd.read_csv(p)["m_cold"].iloc[-1]) if os.path.exists(p) else cold_last(run)
     sc = axes[1].scatter(rr, x, c=[cold50], cmap="viridis", vmin=0, vmax=0.6, s=260, edgecolors="k", zorder=3)
     axes[1].annotate(f"{lab}\ndense min {dmin:.2f}", (rr, x), xytext=(12, -4), textcoords="offset points", fontsize=10)
     print(f"{lab:12s} {x:5.1f} {rr:8.3g} {dmin:21.3f} {d50:10.3f} {cold50:9.3f} {amin:17.3f}")
@@ -66,11 +86,13 @@ axes[0].set_title("Does a dense remnant survive the pericentre?"); axes[0].legen
 axes[1].set_xscale("log"); axes[1].set_yscale("log")
 axes[1].axvline(1, color="0.5", ls="--", lw=1); axes[1].axhline(11.5, color="k", ls=":", lw=1)
 axes[1].text(1.08, 1.12, "r/r_crit = 1", color="0.4", fontsize=10)
-axes[1].text(29, 10.6, "adiabatic survival boundary x ≈ 11.5", fontsize=10, ha="right", va="top")
+axes[1].text(78, 10.6, "adiabatic survival boundary x ≈ 11.5", fontsize=10, ha="right", va="top")
+axes[1].axhspan(4.2, 8.1, color="0.5", alpha=0.12, lw=0)
+axes[1].text(78, 5.9, "a dense remnant survives the pericentre\nfrom somewhere in this band on", fontsize=10, ha="right", va="center", color="0.3")
 axes[1].text(0.025, 1.5, "no dense remnant survives the pericentre:\ndestroyed, independent of cooling", fontsize=11, color="0.3")
 axes[1].text(0.025, 22, "dense remnant survives,\nno recondensation", fontsize=11, color="0.3")
 axes[1].text(1.3, 22, "remnant survives\nand recondenses", fontsize=11, color="0.3")
-axes[1].set_xlim(0.02, 30); axes[1].set_ylim(1, 30)
+axes[1].set_xlim(0.02, 80); axes[1].set_ylim(1, 30)
 axes[1].set_xlabel("r/r_crit = t_cc / t_cool,mix  (at start)"); axes[1].set_ylabel("x = α t_cc / t_peri")
 axes[1].set_title("CC01 orbit with cooling: colour = cold mass at 50 yr")
 fig.colorbar(sc, ax=axes[1], label="m(T < 3 T_cl0) / m₀ at 50 yr")

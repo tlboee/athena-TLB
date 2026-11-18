@@ -63,8 +63,9 @@ def series(run):
     df = pd.DataFrame(rows, columns=["t", "dense"]); df.to_csv(cache, index=False)
     return df
 
-fig, axes = plt.subplots(1, 2, figsize=(17, 6.5), constrained_layout=True)
+fig, axes = plt.subplots(1, 3, figsize=(25, 6.5), constrained_layout=True)
 print(f"\n{'Lauf':12s} {'x':>5s} {'r/r_crit':>8s} {'dicht min (18-25 yr)':>21s} {'dicht @50':>10s} {'kalt @50':>9s} {'dicht min adiab.':>17s}")
+pairs = []
 for lab, run, x, rr, adia, c in COOL:
     if not os.path.isdir(os.path.join(BASE, run)):
         print(f"{run} fehlt"); continue
@@ -81,13 +82,15 @@ for lab, run, x, rr, adia, c in COOL:
     sc = axes[1].scatter(rr, x, c=[cold50], cmap="viridis", vmin=0, vmax=0.6, s=260, edgecolors="k", zorder=3)
     axes[1].annotate(f"{lab}\ndense min {dmin:.2f}", (rr, x), xytext=(12, -4), textcoords="offset points", fontsize=10)
     print(f"{lab:12s} {x:5.1f} {rr:8.3g} {dmin:21.3f} {d50:10.3f} {cold50:9.3f} {amin:17.3f}")
+    if lab.endswith("Λ×1"):
+        pairs.append((x, dmin, amin))
 axes[0].axvline(T_PERI, color="k", ls=":", lw=0.8)
 axes[0].set_xlabel("t [yr]"); axes[0].set_ylabel("dense fraction  ρ/ρ_eq > √χ₀  (of initial cloud mass)")
 axes[0].set_title("Does a dense remnant survive the pericentre?"); axes[0].legend(fontsize=8, ncol=2)
 axes[1].set_xscale("log"); axes[1].set_yscale("log")
 axes[1].axvline(1, color="0.5", ls="--", lw=1); axes[1].axhline(11.5, color="k", ls=":", lw=1)
 axes[1].text(1.08, 1.12, "r/r_crit = 1", color="0.4", fontsize=10)
-axes[1].text(78, 10.6, "adiabatic survival boundary x ≈ 11.5", fontsize=10, ha="right", va="top")
+axes[1].text(0.025, 10.6, "adiabatic survival boundary x ≈ 11.5", fontsize=10, ha="left", va="top")
 axes[1].axhspan(4.2, 8.1, color="0.5", alpha=0.12, lw=0)
 axes[1].text(78, 5.9, "a dense remnant survives the pericentre\nfrom somewhere in this band on", fontsize=10, ha="right", va="center", color="0.3")
 axes[1].text(0.025, 1.5, "no dense remnant survives the pericentre:\ndestroyed, independent of cooling", fontsize=11, color="0.3")
@@ -97,5 +100,25 @@ axes[1].set_xlim(0.02, 80); axes[1].set_ylim(1, 30)
 axes[1].set_xlabel("r/r_crit = t_cc / t_cool,mix  (at start)"); axes[1].set_ylabel("x = α t_cc / t_peri")
 axes[1].set_title("CC01 orbit with cooling: colour = cold mass at 50 yr")
 fig.colorbar(sc, ax=axes[1], label="m(T < 3 T_cl0) / m₀ at 50 yr")
+def cross(xs, ys, lvl=0.5):
+    for (x1, y1), (x2, y2) in zip(zip(xs, ys), zip(xs[1:], ys[1:])):
+        if (y1 - lvl) * (y2 - lvl) < 0:
+            return float(np.exp(np.log(x1) + (lvl - y1) / (y2 - y1) * (np.log(x2) - np.log(x1))))
+    return np.nan
+pairs.sort()
+xs, yc, ya = [q[0] for q in pairs], [q[1] for q in pairs], [q[2] for q in pairs]
+ax3 = axes[2]
+ax3.plot(xs, ya, "o--", color="0.4", ms=8, label="adiabatic")
+ax3.plot(xs, yc, "o-", color="#c0392b", ms=8, label="with cooling (Λ×1, r/r_crit ≈ 1.6–6.4)")
+ax3.axhline(0.5, color="k", ls=":", lw=1)
+for y, c, lab in ((ya, "0.4", "adiabatic"), (yc, "#c0392b", "cooling")):
+    xc = cross(xs, y)
+    if np.isfinite(xc):
+        ax3.axvline(xc, color=c, lw=1, ls="--")
+        ax3.text(xc * 1.02, 0.03, f"x ≈ {xc:.1f}", color=c, fontsize=11)
+        print(f"Grenze (dichter Rest = 0.5 nach dem Perizentrum), {lab}: x ≈ {xc:.2f}")
+ax3.set_xscale("log"); ax3.set_xlim(1.5, 20); ax3.set_ylim(-0.02, 0.75)
+ax3.set_xlabel("x = α t_cc / t_peri"); ax3.set_ylabel("dense fraction min. after pericentre (18–25 yr)")
+ax3.set_title("Cooling shifts the boundary for surviving the pericentre"); ax3.legend(fontsize=10, loc="upper left")
 fig.savefig(os.path.join(BASE, "cool_seed.png"), dpi=150)
 plt.show()

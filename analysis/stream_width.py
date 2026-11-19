@@ -22,7 +22,8 @@ YR, KM, R0, RHO0, RR0, R_IN = 3.156e7, 1e5, 1.87e15, 1.702e-21, 1.0e16, 1.9e15
 CHI0, T_PERI = 2755.0, 18.0
 RUNS = [("1024, whole orbit", "ps_ref_big_x2_t50", "#21918c", 1.0),
         ("1024, fine", "ps_ref_big_x2_peri", "#0b5d55", 2.0),
-        ("2048, fine", "ps_ref_big_x4_peri", "#bddf26", 2.0)]
+        ("2048, fine", "ps_ref_big_x4_peri", "#bddf26", 2.0),
+        ("1024 with cooling, whole orbit", "ps_ref_big_cool_x2_t50", "#c0392b", 1.0)]
 
 def perimeter(mask, dx):
     if find_contours is not None:
@@ -81,7 +82,7 @@ axes[1, 1].axhline(0.25, color="0.5", lw=1); axes[1, 1].text(1, 0.28, "pericentr
 for ax in axes[1]:
     ax.set_xlabel("t [yr]")
 axes[0, 0].legend(fontsize=8); axes[0, 1].legend(fontsize=8)
-fig.suptitle("CC01 adiabatic: width of the cloud stream and local cloud-crushing time along the orbit")
+fig.suptitle("CC01 (adiabatic and with cooling): width of the cloud stream and local cloud-crushing time along the orbit")
 fig.savefig(os.path.join(BASE, "stream_width.png"), dpi=150)
 plt.show()
 

@@ -12,7 +12,7 @@ ATH=$HOME/athena
 MODS=$(python3 -c "import ast; t = ast.parse(open('$ATH/jobs/param_study.py').read()); print([n.value.value for n in t.body if isinstance(n, ast.Assign) and getattr(n.targets[0], 'id', '') == 'MODULES'][0])")
 module purge; module load $MODS; module unload toolkit/nvidia-hpc-sdk devel/cuda 2>/dev/null || true
 cd $ATH/runs/$RUN
-RST=$(ls -t g2_cart.*.rst | head -1)
-echo "Fortsetzung aus $RST, Job $SLURM_JOB_ID, $(date +%F)" >> RUN_INFO.md
-mpirun -np $SLURM_NTASKS $ATH/bin/athena_g2_cart -r $RST -d .
+RST=${RST:-$( [ -f g2_cart.final.rst ] && echo g2_cart.final.rst || ls -t g2_cart.*.rst | head -1 )}
+echo "Fortsetzung aus $RST, Job $SLURM_JOB_ID, $(date +%F), EXTRA: $EXTRA" >> RUN_INFO.md
+mpirun -np $SLURM_NTASKS $ATH/bin/athena_g2_cart -r $RST -d . $EXTRA
 echo "fertig $(date)"

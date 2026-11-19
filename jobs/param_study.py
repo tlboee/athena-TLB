@@ -237,7 +237,7 @@ def make_runs():
             runs[f"{name}_R{f:g}_x{k}"] = r
 
     # --- Bestaetigung des Kuehlkriteriums (17.11.): R/2 mit starker Kuehlung, 0.75 R knapp unter der Grenze ---
-    for cool, fac, f, k in [(True, 10.0, 0.5, 2), (True, 1.0, 0.75, 2), (False, 1.0, 0.75, 2), (True, 1.0, 0.85, 2), (False, 1.0, 0.85, 2)]:
+    for cool, fac, f, k in [(True, 10.0, 0.5, 2), (True, 1.0, 0.75, 2), (False, 1.0, 0.75, 2), (True, 1.0, 0.85, 2), (False, 1.0, 0.85, 2), (True, 16.0, 1.0, 2), (True, 160.0, 1.0, 2), (True, 100.0, 0.5, 2)]:
         r = json.loads(json.dumps(runs["ps_ref_big"]))
         nx1, nx2, mb = 1152 * k, NX2 * k, 128
         r["params"] = dict(r["params"], **{"problem/R_cloud": f"{f * R_CLOUD:.4g}",
